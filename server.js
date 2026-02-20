@@ -52,16 +52,30 @@ app.get('/auth/status', (req, res) => {
     res.json({ active: bm.isAlive() });
 });
 
-// ── Automation ───────────────────────────────────────────────────
+// ── Automation (Task List) ────────────────────────────────────
 app.post('/api/run-workflow', async (req, res) => {
     try {
         const filters = req.body;
-        console.log('[Server] Starting workflow with filters:', filters);
+        console.log('[Server] Starting task-list workflow with filters:', filters);
         const result = await bp.runFullWorkflow(filters);
         if (result.success === false) return res.status(500).json(result);
         res.json({ success: true, data: result });
     } catch (err) {
         console.error('[Server] Workflow error:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ── Automation (Proposal List) ────────────────────────────────
+app.post('/api/run-proposal', async (req, res) => {
+    try {
+        const params = req.body;
+        console.log('[Server] Starting proposal workflow with params:', params);
+        const result = await bp.runProposalWorkflow(params);
+        if (result.success === false) return res.status(500).json(result);
+        res.json({ success: true, data: result });
+    } catch (err) {
+        console.error('[Server] Proposal error:', err);
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -73,5 +87,6 @@ app.listen(PORT, () => {
     console.log(`    POST /auth/start         — begin login`);
     console.log(`    POST /auth/complete       — submit captcha`);
     console.log(`    GET  /auth/status         — session alive?`);
-    console.log(`    POST /api/run-workflow    — full automation\n`);
+    console.log(`    POST /api/run-workflow    — task list automation`);
+    console.log(`    POST /api/run-proposal    — proposal list automation\n`);
 });

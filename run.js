@@ -115,12 +115,49 @@ async function main() {
         return;
     }
 
-    // ── RUN WORKFLOW ─────────────────────────────────────────────
-    console.log('\n── RUNNING FULL WORKFLOW ──');
-    console.log(`Filters: ${JSON.stringify(CFG.DEFAULT_FILTERS)}`);
+    // ── INTERACTIVE MODE SELECTION ────────────────────────────────
+    const rl = require('readline').createInterface({
+        input: process.stdin,
+        output: process.stdout,
+    });
+    const ask = (q) => new Promise(resolve => rl.question(q, resolve));
+
+    console.log('\n┌──────────────────────────────────────┐');
+    console.log('│  Choose a mode:                      │');
+    console.log('│    T = Task List                     │');
+    console.log('│    P = Proposal List                 │');
+    console.log('└──────────────────────────────────────┘');
+    const mode = (await ask('  Mode (T/P): ')).trim().toUpperCase();
+
+    let endpoint, body;
+
+    if (mode === 'P') {
+        // ── PROPOSAL LIST ──
+        console.log('\n── Proposal List Mode ──');
+        const fileNo = (await ask('  File No (or press Enter to skip): ')).trim();
+        const applicantName = (await ask('  Applicant Name (or press Enter to skip): ')).trim();
+        endpoint = '/api/run-proposal';
+        body = { fileNo, applicantName };
+        console.log(`\n  Params: ${JSON.stringify(body)}`);
+    } else {
+        // ── TASK LIST (default) ──
+        console.log('\n── Task List Mode ──');
+        console.log('  Action filter: "Sec Verification" (fixed)');
+        const searchColumn = (await ask('  Search By Column (or press Enter to skip): ')).trim();
+        const searchKeyword = (await ask('  Search Keyword (or press Enter to skip): ')).trim();
+        endpoint = '/api/run-workflow';
+        body = { action: 'Sec Verification' };
+        if (searchColumn) body.searchColumn = searchColumn;
+        if (searchKeyword) body.searchKeyword = searchKeyword;
+        console.log(`\n  Filters: ${JSON.stringify(body)}`);
+    }
+    rl.close();
+
+    // ── RUN ──────────────────────────────────────────────────────
+    console.log('\n── RUNNING WORKFLOW ──');
 
     try {
-        const res = await request('POST', '/api/run-workflow', CFG.DEFAULT_FILTERS);
+        const res = await request('POST', endpoint, body);
 
         if (res.data.success === false) {
             console.error('\n❌ Workflow failed:', res.data.error);
@@ -134,6 +171,7 @@ async function main() {
         console.log('╚══════════════════════════════════════════════════╝');
 
         console.log('\n── Summary ──');
+        console.log(`  Mode           : ${data.mode || 'task-list'}`);
         console.log(`  Heading        : ${data.heading || '(none)'}`);
         console.log(`  Total Cases    : ${data.totalCases || '(unknown)'}`);
         console.log(`  Table Rows     : ${data.all_rows ? data.all_rows.length : 0}`);

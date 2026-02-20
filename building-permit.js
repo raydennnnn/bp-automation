@@ -791,6 +791,547 @@ async function runFullWorkflow(filters = CFG.DEFAULT_FILTERS) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  PROPOSAL LIST FUNCTIONS
+// ═══════════════════════════════════════════════════════════════
+const SP = CFG.SEL_PROPOSAL;
+
+/**
+ * Find the Proposal List card by scanning all cards for the one
+ * whose header contains "Proposal List".
+ * Returns an ElementHandle for the card, or null.
+ */
+async function findProposalCard(page) {
+    const cardHandle = await page.evaluateHandle(() => {
+        const cards = document.querySelectorAll('.card');
+        for (const card of cards) {
+            const h6 = card.querySelector('.card-header h6');
+            if (h6 && /Proposal\s*List/i.test(h6.innerText)) return card;
+        }
+        return null;
+    });
+    const resolved = cardHandle.asElement();
+    if (resolved) {
+        console.log('[BP] ✅ Found Proposal List card.');
+    } else {
+        console.warn('[BP] ❌ Proposal List card not found.');
+    }
+    return resolved;
+}
+
+/**
+ * Click the Search button on the Proposal List card,
+ * fill File No and/or Applicant Name, then click Find.
+ */
+async function applyProposalSearch(params = {}) {
+    const page = bm.getPage();
+    if (!page) return { success: false, error: 'No session' };
+
+    console.log('[BP] Applying proposal search:', JSON.stringify(params));
+
+    try {
+        const card = await findProposalCard(page);
+        if (!card) return { success: false, error: 'Proposal List card not found' };
+
+        // Click the Search button inside the card header
+        const searchBtn = await card.$('.card-header button.btn-info');
+        if (searchBtn) {
+            await searchBtn.click();
+            console.log('[BP] ✅ Clicked Search button.');
+            await sleep(2000);
+        } else {
+            console.warn('[BP] Search button not found in Proposal List header.');
+        }
+
+        // Fill File No
+        if (params.fileNo) {
+            const fileInput = await page.$(SP.FILE_NO_INPUT);
+            if (fileInput) {
+                await fileInput.click({ clickCount: 3 });
+                await fileInput.type(params.fileNo);
+                console.log(`[BP] Typed File No: "${params.fileNo}"`);
+            }
+        }
+
+        // Fill Applicant Name
+        if (params.applicantName) {
+            const nameInput = await page.$(SP.APPLICANT_INPUT);
+            if (nameInput) {
+                await nameInput.click({ clickCount: 3 });
+                await nameInput.type(params.applicantName);
+                console.log(`[BP] Typed Applicant Name: "${params.applicantName}"`);
+            }
+        }
+
+        // Click Find button — look for button containing "Find" text
+        const findBtn = await page.evaluateHandle(() => {
+            const btns = document.querySelectorAll('button.btn-info');
+            for (const b of btns) {
+                if (/Find/i.test(b.innerText)) return b;
+            }
+            return null;
+        });
+        const findEl = findBtn.asElement();
+        if (findEl) {
+            await findEl.click();
+            console.log('[BP] ✅ Clicked Find button.');
+            await sleep(3000);
+        } else {
+            console.warn('[BP] Find button not found.');
+        }
+
+        await screenshot('after_proposal_search');
+        return { success: true };
+    } catch (err) {
+        console.error('[BP] applyProposalSearch error:', err.message);
+        return { success: false, error: err.message };
+    }
+}
+
+/**
+ * Extract rows from the Proposal List table.
+ * Headers: #, Application No., File No., Applicant Name, Date, Service Name, Status, Pending With, Action
+ */
+async function extractProposalTable() {
+    const page = bm.getPage();
+    if (!page) return { success: false, error: 'No session' };
+
+    try {
+        const card = await findProposalCard(page);
+        if (!card) return { success: false, error: 'Proposal List card not found' };
+
+        // Extract headers
+        const headers = await card.$eval('table thead', thead =>
+            Array.from(thead.querySelectorAll('th')).map(th => th.innerText.trim())
+        ).catch(() => ['#', 'Application No.', 'File No.', 'Applicant Name', 'Date', 'Service Name', 'Status', 'Pending With', 'Action']);
+
+        // Extract rows
+        const rawRows = await card.$$eval('table tbody tr', rows =>
+            rows.map(row =>
+                Array.from(row.querySelectorAll('td')).map(c => c.innerText.trim())
+            )
+        );
+
+        const rows = rawRows.map(cells => {
+            const obj = {};
+            headers.forEach((h, i) => { obj[h] = cells[i] || ''; });
+            return obj;
+        });
+
+        console.log(`[BP] Extracted ${rows.length} proposal rows.`);
+        return { success: true, headers, rows };
+    } catch (err) {
+        console.error('[BP] extractProposalTable error:', err.message);
+        return { success: false, error: err.message };
+    }
+}
+
+/**
+ * Click the View button on the given row of the Proposal List.
+ * The detail opens in a modal (ngb-modal-window), so we wait for that.
+ */
+async function openProposalRow(rowIndex = 0) {
+    const page = bm.getPage();
+    if (!page) return { success: false, error: 'No session' };
+
+    try {
+        const card = await findProposalCard(page);
+        if (!card) return { success: false, error: 'Proposal List card not found' };
+
+        const rows = await card.$$('table tbody tr');
+        if (rowIndex >= rows.length) {
+            return { success: false, error: `Row ${rowIndex} not found (only ${rows.length} rows)` };
+        }
+
+        const btn = await rows[rowIndex].$('td:last-child button');
+        if (!btn) return { success: false, error: 'View button not found in row' };
+
+        console.log(`[BP] Clicking View on proposal row ${rowIndex}...`);
+        await btn.click();
+
+        // Wait for modal to appear
+        await page.waitForSelector(SP.MODAL, { visible: true, timeout: 15_000 });
+        await sleep(3000);
+
+        console.log('[BP] ✅ Modal opened.');
+        await screenshot('proposal_modal');
+        return { success: true };
+    } catch (err) {
+        console.error('[BP] openProposalRow error:', err.message);
+        await screenshot('debug_proposal_row_error');
+        return { success: false, error: err.message };
+    }
+}
+
+/**
+ * Extract heading from modal: h1 > strong
+ */
+async function extractHeadingFromModal() {
+    const page = bm.getPage();
+    if (!page) return null;
+
+    try {
+        console.log('[BP] Extracting heading from modal...');
+        const heading = await page.$eval(SP.MODAL_HEADING, el => el.innerText.trim()).catch(() => null);
+        if (!heading) {
+            // Fallback: any strong inside the modal
+            const fallback = await page.$eval('ngb-modal-window strong', el => el.innerText.trim()).catch(() => null);
+            console.log('[BP] Heading (fallback):', fallback);
+            return fallback;
+        }
+        console.log('[BP] Heading:', heading);
+        return heading;
+    } catch (err) {
+        console.error('[BP] extractHeadingFromModal error:', err.message);
+        return null;
+    }
+}
+
+/**
+ * Click the Workflow tab inside the modal and extract workflow items.
+ * Scopes all selectors inside ngb-modal-window.
+ */
+async function extractWorkflowInModal() {
+    const page = bm.getPage();
+    if (!page) return [];
+
+    try {
+        console.log('[BP] === Extracting Workflow (modal) ===');
+
+        // Click Workflow tab inside modal
+        let tab = await page.$(SP.MODAL_TAB_WORKFLOW);
+        if (!tab) {
+            // Fallback: XPath
+            const tabs = await page.$x('//ngb-modal-window//a[contains(., "Workflow")]');
+            if (tabs.length > 0) tab = tabs[0];
+        }
+        if (!tab) {
+            console.warn('[BP] Workflow tab not found in modal.');
+            return [];
+        }
+
+        const isActive = await page.evaluate(el => el.classList.contains('active'), tab);
+        if (!isActive) {
+            await tab.click();
+            await sleep(2000);
+        }
+
+        // Wait for workflow items
+        const candidates = [
+            'ngb-modal-window #tab-workflow-panel li',
+            'ngb-modal-window app-workflow li',
+            'ngb-modal-window app-workflow ul li',
+            'ngb-modal-window div[role="tabpanel"] li',
+        ];
+
+        let foundSel = null;
+        for (const sel of candidates) {
+            try {
+                await page.waitForSelector(sel, { visible: true, timeout: 8_000 });
+                foundSel = sel;
+                console.log(`[BP] Found modal workflow items: ${sel}`);
+                break;
+            } catch (_) {
+                console.log(`[BP] Selector "${sel}" — no match in modal.`);
+            }
+        }
+
+        if (!foundSel) {
+            console.warn('[BP] No workflow items found in modal.');
+            return [];
+        }
+
+        // Reuse the same extraction logic as extractWorkflow
+        const timeline = await page.evaluate((sel) => {
+            const items = [];
+            const lis = document.querySelectorAll(sel);
+
+            lis.forEach((li, idx) => {
+                const item = { _index: idx };
+
+                const h4 = li.querySelector('h4');
+                if (h4) {
+                    const badge = h4.querySelector('.badge');
+                    if (badge) item.status = badge.innerText.trim();
+                    const clone = h4.cloneNode(true);
+                    clone.querySelectorAll('.badge, .float-right, .d-inline-block, .text-muted').forEach(c => c.remove());
+                    let name = clone.innerText.replace(/Process Name:/i, '').trim();
+                    item.process_name = name || null;
+                }
+
+                const dateDivs = li.querySelectorAll('.col-md-5');
+                dateDivs.forEach(d => {
+                    const txt = d.innerText;
+                    const sm = txt.match(/Start Date[:\s]*([0-9/.\-:\s]+)/i);
+                    const em = txt.match(/End Date[:\s]*([0-9/.\-:\s]+)/i);
+                    if (sm) item.start_date = sm[1].trim();
+                    if (em) item.end_date = em[1].trim();
+                });
+
+                const asgDivs = li.querySelectorAll('.col-md-3');
+                asgDivs.forEach(d => {
+                    const txt = d.innerText.trim();
+                    if (txt && !item.assigned_to) item.assigned_to = txt;
+                });
+
+                const pre = li.querySelector('pre');
+                if (pre) item.remarks = pre.innerText.trim();
+
+                const detail = li.querySelector('.collapse.show');
+                if (detail) item.detail_content = detail.innerText.trim();
+
+                if (!item.process_name && !item.remarks) {
+                    const rawText = li.innerText.trim();
+                    if (rawText.length > 5) item.raw_text = rawText.substring(0, 300);
+                }
+
+                const hasMeaning = item.process_name || item.remarks || item.raw_text;
+                if (hasMeaning) {
+                    delete item._index;
+                    items.push(item);
+                }
+            });
+
+            return items;
+        }, foundSel);
+
+        console.log(`[BP] ✅ Extracted ${timeline.length} workflow items from modal.`);
+
+        // Auto-convert Krutidev
+        let convertedCount = 0;
+        for (const item of timeline) {
+            if (item.remarks && isLikelyKrutidev(item.remarks)) {
+                item.remarks_original = item.remarks;
+                item.remarks = autoConvert(item.remarks);
+                convertedCount++;
+            }
+        }
+        if (convertedCount > 0) {
+            console.log(`[BP] 🔄 Auto-converted ${convertedCount} Krutidev remarks to Unicode Hindi.`);
+        }
+
+        if (timeline.length > 0) {
+            console.log('[BP] Workflow preview (first 3):');
+            timeline.slice(0, 3).forEach((w, i) => {
+                console.log(`  ${i + 1}. ${w.process_name || 'N/A'} [${w.status || ''}]`);
+            });
+        }
+
+        await screenshot('proposal_workflow');
+        return timeline;
+
+    } catch (err) {
+        console.error('[BP] extractWorkflowInModal error:', err.message);
+        return [];
+    }
+}
+
+/**
+ * Download attachments from inside the modal.
+ * Scopes panel selectors inside ngb-modal-window.
+ */
+async function downloadAttachmentsInModal() {
+    const page = bm.getPage();
+    if (!page) return { panels: [], files: [] };
+
+    try {
+        console.log('[BP] === Downloading Attachments (modal) ===');
+
+        // Click Attachment tab inside modal
+        let tab = await page.$(SP.MODAL_TAB_ATTACHMENT);
+        if (!tab) {
+            const tabs = await page.$x('//ngb-modal-window//a[contains(., "Attachment")]');
+            if (tabs.length > 0) tab = tabs[0];
+        }
+        if (!tab) {
+            console.warn('[BP] Attachment tab not found in modal.');
+            return { panels: [], files: [] };
+        }
+
+        const isActive = await page.evaluate(el => el.classList.contains('active'), tab);
+        if (!isActive) {
+            await tab.click();
+            await sleep(2000);
+        }
+
+        // Wait for panels
+        try {
+            await page.waitForSelector(SP.MODAL_ATTACHMENT_PANELS, { visible: true, timeout: 10_000 });
+        } catch (_) {
+            console.warn('[BP] No attachment panels found in modal.');
+            return { panels: [], files: [] };
+        }
+        await sleep(2000);
+
+        const panels = await page.$$(SP.MODAL_ATTACHMENT_PANELS);
+        console.log(`[BP] Found ${panels.length} attachment panels in modal.`);
+
+        const allMeta = [];
+        let downloadCount = 0;
+
+        for (let i = 0; i < panels.length; i++) {
+            try {
+                const currentPanels = await page.$$(SP.MODAL_ATTACHMENT_PANELS);
+                const panel = currentPanels[i];
+                if (!panel) continue;
+
+                let title = `Attachment_${i + 1}`;
+                try {
+                    title = await panel.$eval('.card-header button',
+                        el => el.innerText.trim().split('\n')[0].trim()
+                    );
+                } catch (_) { }
+
+                console.log(`[BP] Panel ${i + 1}: "${title}"`);
+
+                // Expand if collapsed
+                const headerBtn = await panel.$('.card-header button');
+                if (headerBtn) {
+                    const expanded = await page.evaluate(el => el.getAttribute('aria-expanded'), headerBtn);
+                    if (expanded !== 'true') {
+                        await headerBtn.click();
+                        await sleep(1500);
+                    }
+                }
+
+                const rows = await panel.$$('tbody tr');
+                if (rows.length === 0) {
+                    console.log(`[BP]   No attachment rows in this panel.`);
+                    continue;
+                }
+
+                for (let r = 0; r < rows.length; r++) {
+                    const freshPanels = await page.$$(SP.MODAL_ATTACHMENT_PANELS);
+                    const freshPanel = freshPanels[i];
+                    if (!freshPanel) break;
+                    const freshRows = await freshPanel.$$('tbody tr');
+                    const row = freshRows[r];
+                    if (!row) break;
+
+                    const meta = await page.evaluate(tr => {
+                        const tds = tr.querySelectorAll('td');
+                        return {
+                            description: tds[1] ? tds[1].innerText.trim() : '',
+                            date: tds[2] ? tds[2].innerText.trim() : '',
+                        };
+                    }, row);
+                    meta.panelTitle = title;
+
+                    const dlBtn = await row.$('button[ngbtooltip="Download Attachment"], button:has(i.fa-download)');
+                    if (!dlBtn) {
+                        const dlBtns = await row.$x('.//button[.//i[contains(@class, "fa-download")]]');
+                        if (dlBtns.length > 0) {
+                            console.log(`[BP]   Downloading: "${meta.description}" (${meta.date})`);
+                            const filesBefore = new Set(fs.readdirSync(CFG.DOWNLOAD_DIR));
+                            await dlBtns[0].click();
+                            await waitForDownload(filesBefore);
+                            downloadCount++;
+                            meta.downloaded = true;
+                        } else {
+                            meta.downloaded = false;
+                        }
+                    } else {
+                        console.log(`[BP]   Downloading: "${meta.description}" (${meta.date})`);
+                        const filesBefore = new Set(fs.readdirSync(CFG.DOWNLOAD_DIR));
+                        await dlBtn.click();
+                        await waitForDownload(filesBefore);
+                        downloadCount++;
+                        meta.downloaded = true;
+                    }
+                    allMeta.push(meta);
+                }
+
+                // Collapse
+                const collapseBtn = await panel.$('.card-header button');
+                if (collapseBtn) {
+                    const exp = await page.evaluate(el => el.getAttribute('aria-expanded'), collapseBtn);
+                    if (exp === 'true') {
+                        await collapseBtn.click();
+                        await sleep(500);
+                    }
+                }
+            } catch (panelErr) {
+                console.warn(`[BP] Error in modal panel ${i + 1}:`, panelErr.message);
+            }
+        }
+
+        const filesOnDisk = fs.readdirSync(CFG.DOWNLOAD_DIR).filter(f => !f.endsWith('.crdownload'));
+        console.log(`[BP] ✅ Downloads complete. ${downloadCount} triggered, ${filesOnDisk.length} files on disk.`);
+        return { panels: allMeta, files: filesOnDisk };
+
+    } catch (err) {
+        console.error('[BP] downloadAttachmentsInModal error:', err.message);
+        return { panels: [], files: [] };
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PROPOSAL WORKFLOW ORCHESTRATOR
+// ═══════════════════════════════════════════════════════════════
+async function runProposalWorkflow(params = CFG.DEFAULT_PROPOSAL_PARAMS) {
+    console.log('[BP] ════════════ STARTING PROPOSAL WORKFLOW ════════════');
+    if (!fs.existsSync(CFG.SCREENSHOT_DIR)) fs.mkdirSync(CFG.SCREENSHOT_DIR, { recursive: true });
+    if (!fs.existsSync(CFG.DOWNLOAD_DIR)) fs.mkdirSync(CFG.DOWNLOAD_DIR, { recursive: true });
+
+    const page = bm.getPage();
+    if (!page) return { success: false, error: 'No active session' };
+
+    // Step 1: Navigate to BP module
+    console.log('[BP] Step 1: Navigate to Building Permit...');
+    const navResult = await navigateToBP();
+    if (!navResult.success) return navResult;
+
+    // Step 2: Apply proposal search
+    console.log('[BP] Step 2: Apply proposal search...');
+    const searchResult = await applyProposalSearch(params);
+    if (!searchResult.success) return searchResult;
+
+    // Step 3: Extract proposal table
+    console.log('[BP] Step 3: Extract proposal table...');
+    const tableResult = await extractProposalTable();
+
+    const firstRow = (tableResult.rows && tableResult.rows.length > 0) ? tableResult.rows[0] : null;
+    console.log('[BP] First row:', JSON.stringify(firstRow));
+
+    if (!firstRow) {
+        return { success: false, error: 'No rows found in Proposal List' };
+    }
+
+    // Step 4: Open first row (modal)
+    console.log('[BP] Step 4: Open first row (modal)...');
+    const openResult = await openProposalRow(0);
+    if (!openResult.success) {
+        return { ...tableResult, error: 'Failed to open proposal row: ' + openResult.error };
+    }
+
+    // Step 5: Heading from modal
+    console.log('[BP] Step 5: Extract heading from modal...');
+    const heading = await extractHeadingFromModal();
+
+    // Step 6: Workflow from modal
+    console.log('[BP] Step 6: Extract workflow from modal...');
+    const workflow = await extractWorkflowInModal();
+
+    // Step 7: Attachments from modal (DISABLED for testing — uncomment when ready)
+    console.log('[BP] Step 7: Download attachments from modal... [SKIPPED — testing mode]');
+    // const attachments = await downloadAttachmentsInModal();
+    const attachments = { panels: [], files: [], _skipped: true };
+
+    console.log('[BP] ════════════ PROPOSAL WORKFLOW COMPLETE ════════════');
+    console.log(`[BP] Result summary: heading="${heading}", rows=${(tableResult.rows || []).length}, workflow=${workflow.length}`);
+
+    return {
+        mode: 'proposal',
+        heading,
+        totalCases: navResult.totalCases,
+        search_params: params,
+        first_row: firstRow,
+        all_rows: tableResult.rows || [],
+        workflow,
+        attachments,
+    };
+}
+
+// ═══════════════════════════════════════════════════════════════
 module.exports = {
     navigateToBP,
     applyFilters,
@@ -801,4 +1342,12 @@ module.exports = {
     downloadAttachments,
     goBack,
     runFullWorkflow,
+    // Proposal List
+    applyProposalSearch,
+    extractProposalTable,
+    openProposalRow,
+    extractHeadingFromModal,
+    extractWorkflowInModal,
+    downloadAttachmentsInModal,
+    runProposalWorkflow,
 };
