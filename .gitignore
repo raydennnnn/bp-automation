@@ -1,0 +1,6 @@
+node_modules/
+downloads/
+screenshots/
+extracted_data.json
+eng.traineddata
+*.crdownload
