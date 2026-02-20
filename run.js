@@ -64,8 +64,14 @@ async function main() {
     console.log('╔══════════════════════════════════════════════════╗');
     console.log('║   BUILDING PERMIT — FULL AUTOMATION             ║');
     console.log('╚══════════════════════════════════════════════════╝');
-    console.log(`Filter: action = "${CFG.DEFAULT_FILTERS.action}"`);
     console.log('');
+
+    // ── Readline for interactive prompts ──────────────────────────
+    const rl = require('readline').createInterface({
+        input: process.stdin,
+        output: process.stdout,
+    });
+    const ask = (q) => new Promise(resolve => rl.question(q, resolve));
 
     // ── LOGIN ────────────────────────────────────────────────────
     let loggedIn = false;
@@ -80,20 +86,15 @@ async function main() {
 
         if (!startRes.data.success) {
             console.error('[Login] Start failed:', startRes.data.error);
+            rl.close();
             return;
         }
-        console.log('[Login] Credentials entered. CAPTCHA received.');
+        console.log('[Login] Credentials entered. CAPTCHA is on screen.');
 
-        // OCR the CAPTCHA
-        let captchaText;
-        try {
-            captchaText = await solveCaptcha(startRes.data.captchaImage);
-        } catch (e) {
-            console.error('[Login] OCR error:', e.message);
-            continue;
-        }
-        if (!captchaText || captchaText.length < 2) {
-            console.warn(`[Login] Weak OCR: "${captchaText}". Retrying…`);
+        // Prompt user to type the CAPTCHA
+        const captchaText = (await ask('  Enter CAPTCHA: ')).trim();
+        if (!captchaText) {
+            console.warn('[Login] No CAPTCHA entered. Retrying…');
             continue;
         }
 
@@ -112,15 +113,9 @@ async function main() {
 
     if (!loggedIn) {
         console.error('\n❌ All login attempts failed.');
+        rl.close();
         return;
     }
-
-    // ── INTERACTIVE MODE SELECTION ────────────────────────────────
-    const rl = require('readline').createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
-    const ask = (q) => new Promise(resolve => rl.question(q, resolve));
 
     console.log('\n┌──────────────────────────────────────┐');
     console.log('│  Choose a mode:                      │');
