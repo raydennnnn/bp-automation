@@ -1076,8 +1076,7 @@ async function extractWorkflowInModal() {
                 const pre = li.querySelector('pre');
                 if (pre) item.remarks = pre.innerText.trim();
 
-                const detail = li.querySelector('.collapse.show');
-                if (detail) item.detail_content = detail.innerText.trim();
+                // detail_content omitted for proposal list
 
                 if (!item.process_name && !item.remarks) {
                     const rawText = li.innerText.trim();
@@ -1100,7 +1099,6 @@ async function extractWorkflowInModal() {
         let convertedCount = 0;
         for (const item of timeline) {
             if (item.remarks && isLikelyKrutidev(item.remarks)) {
-                item.remarks_original = item.remarks;
                 item.remarks = autoConvert(item.remarks);
                 convertedCount++;
             }
