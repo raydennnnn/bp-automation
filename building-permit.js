@@ -1155,13 +1155,20 @@ async function downloadAttachmentsInModal() {
 
         const isActive = await page.evaluate(el => el.classList.contains('active'), tab);
         if (!isActive) {
-            await tab.click();
+            await page.evaluate(el => el.click(), tab);
             await sleep(2000);
         }
 
-        // Wait for panels
+        // Wait until Attachment tab is actually active (aria-selected becomes true)
         try {
-            await page.waitForSelector(SP.MODAL_ATTACHMENT_PANELS, { visible: true, timeout: 10_000 });
+            await page.waitForFunction(
+                () => {
+                    const tab = document.querySelector('ngb-modal-window #tab-attachment');
+                    return tab && tab.getAttribute('aria-selected') === 'true';
+                },
+                { timeout: 10_000 }
+            );
+            console.log('[BP] Modal Attachment tab is now active.');
         } catch (_) {
             console.warn('[BP] No attachment panels found in modal.');
             return { panels: [], files: [] };
