@@ -238,13 +238,14 @@ async function extractCCMSTable() {
             return obj;
         });
 
-        // Auto-convert Krutidev in Defendent column
+        // Always convert Defendent column — it contains Krutidev Hindi names
+        const { krutidevToUnicode } = require('./krutidev-converter');
         for (const row of rows) {
-            if (row['Defendent'] && isLikelyKrutidev(row['Defendent'])) {
-                row['Defendent'] = autoConvert(row['Defendent']);
+            if (row['Defendent']) {
+                row['Defendent'] = krutidevToUnicode(row['Defendent']);
             }
-            if (row['Defendant'] && isLikelyKrutidev(row['Defendant'])) {
-                row['Defendant'] = autoConvert(row['Defendant']);
+            if (row['Defendant']) {
+                row['Defendant'] = krutidevToUnicode(row['Defendant']);
             }
         }
 
@@ -691,27 +692,41 @@ async function performAction(params = {}) {
             }
         }
 
-        // Click Save Draft (NOT Done — Done is locked)
+        // Click Save Draft or Done
         if (params.clickDone) {
-            console.log('[CCMS] ⚠ "Done" button is LOCKED. Use Save Draft instead.');
-            console.log('[CCMS] Skipping Done click for safety.');
-        }
-
-        // Find and click Save Draft
-        const saveDraftBtn = await page.evaluateHandle(() => {
-            const btns = document.querySelectorAll('button');
-            for (const b of btns) {
-                if (/Save Draft/i.test(b.innerText)) return b;
+            // Find and click Done button
+            const doneBtn = await page.evaluateHandle(() => {
+                const btns = document.querySelectorAll('button');
+                for (const b of btns) {
+                    if (/^\s*Done\s*$/i.test(b.innerText)) return b;
+                }
+                return null;
+            });
+            const doneEl = doneBtn.asElement();
+            if (doneEl) {
+                await doneEl.click();
+                console.log('[CCMS] ✅ Clicked Done.');
+                await sleep(3000);
+            } else {
+                console.warn('[CCMS] Done button not found.');
             }
-            return null;
-        });
-        const saveDraftEl = saveDraftBtn.asElement();
-        if (saveDraftEl) {
-            await saveDraftEl.click();
-            console.log('[CCMS] ✅ Clicked Save Draft.');
-            await sleep(3000);
         } else {
-            console.warn('[CCMS] Save Draft button not found.');
+            // Find and click Save Draft
+            const saveDraftBtn = await page.evaluateHandle(() => {
+                const btns = document.querySelectorAll('button');
+                for (const b of btns) {
+                    if (/Save Draft/i.test(b.innerText)) return b;
+                }
+                return null;
+            });
+            const saveDraftEl = saveDraftBtn.asElement();
+            if (saveDraftEl) {
+                await saveDraftEl.click();
+                console.log('[CCMS] ✅ Clicked Save Draft.');
+                await sleep(3000);
+            } else {
+                console.warn('[CCMS] Save Draft button not found.');
+            }
         }
 
         await screenshot('ccms_action_done');

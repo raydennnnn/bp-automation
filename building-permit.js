@@ -767,10 +767,9 @@ async function runFullWorkflow(filters = CFG.DEFAULT_FILTERS) {
     console.log('[BP] Step 6: Extract workflow...');
     const workflow = await extractWorkflow();
 
-    // Step 7: Attachments (DISABLED for testing — uncomment when workflow is verified)
-    console.log('[BP] Step 7: Download attachments... [SKIPPED — testing mode]');
-    // const attachments = await downloadAttachments();
-    const attachments = { panels: [], files: [], _skipped: true };
+    // Step 7: Attachments
+    console.log('[BP] Step 7: Download attachments...');
+    const attachments = await downloadAttachments();
 
     // Step 8: Go back
     console.log('[BP] Step 8: Go back...');
@@ -1309,10 +1308,9 @@ async function runProposalWorkflow(params = CFG.DEFAULT_PROPOSAL_PARAMS) {
     console.log('[BP] Step 6: Extract workflow from modal...');
     const workflow = await extractWorkflowInModal();
 
-    // Step 7: Attachments from modal (DISABLED for testing — uncomment when ready)
-    console.log('[BP] Step 7: Download attachments from modal... [SKIPPED — testing mode]');
-    // const attachments = await downloadAttachmentsInModal();
-    const attachments = { panels: [], files: [], _skipped: true };
+    // Step 7: Attachments from modal
+    console.log('[BP] Step 7: Download attachments from modal...');
+    const attachments = await downloadAttachmentsInModal();
 
     console.log('[BP] ════════════ PROPOSAL WORKFLOW COMPLETE ════════════');
     console.log(`[BP] Result summary: heading="${heading}", rows=${(tableResult.rows || []).length}, workflow=${workflow.length}`);

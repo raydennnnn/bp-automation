@@ -371,7 +371,7 @@ function isLikelyKrutidev(text) {
     if (devanagariCount > text.length * 0.3) return false;
 
     // Common Krutidev word patterns
-    const krutiMarkers = /(?:fd;k|x;k|gSA|gS|dh|ds|dk|esa|vkSj|;g|ls|ij|dks|ugha|gks|;k|Fkk|Fkh|Fks|x;h|x;s|fd|vk|,d|Hkh)/;
+    const krutiMarkers = /(?:fd;k|x;k|gSA|gS|dh|ds|dk|esa|vkSj|;g|ls|ij|dks|ugha|gks|;k|Fkk|Fkh|Fks|x;h|x;s|fd|vk|,d|Hkh|iky|Unz|ckn|okyk|okys|okjk|flag|uxj|edku|ekg|ngr|iqj|iqjk|xkao|Hkou|xyh|lM\+d)/;
     return krutiMarkers.test(text);
 }
 
