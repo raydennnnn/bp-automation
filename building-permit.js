@@ -348,7 +348,8 @@ async function clickTab(tabId, tabName) {
 
         const isActive = await page.evaluate(el => el.classList.contains('active'), tab);
         if (!isActive) {
-            await tab.click();
+            // Force JS click to bypass Angular loading overlays
+            await page.evaluate(el => el.click(), tab);
             await sleep(2000);
         } else {
             console.log(`[BP] Tab already active.`);
@@ -548,9 +549,16 @@ async function downloadAttachments() {
 
         await sleep(2000);
 
-        // Wait for panels
+        // Wait until Attachment tab is actually active (aria-selected becomes true)
         try {
-            await page.waitForSelector(SX.ATTACHMENT_PANELS, { visible: true, timeout: 10_000 });
+            await page.waitForFunction(
+                () => {
+                    const tab = document.querySelector('#tab-attachment');
+                    return tab && tab.getAttribute('aria-selected') === 'true';
+                },
+                { timeout: 10_000 }
+            );
+            console.log('[BP] Attachment tab is now active.');
         } catch (_) {
             console.warn('[BP] No attachment panels found.');
             return { panels: [], files: [] };
@@ -586,7 +594,7 @@ async function downloadAttachments() {
                 if (headerBtn) {
                     const expanded = await page.evaluate(el => el.getAttribute('aria-expanded'), headerBtn);
                     if (expanded !== 'true') {
-                        await headerBtn.click();
+                        await page.evaluate(el => el.click(), headerBtn);
                         await sleep(1500);
                     }
                 }
@@ -625,7 +633,7 @@ async function downloadAttachments() {
                         if (dlBtns.length > 0) {
                             console.log(`[BP]   Downloading: "${meta.description}" (${meta.date})`);
                             const filesBefore = new Set(fs.readdirSync(CFG.DOWNLOAD_DIR));
-                            await dlBtns[0].click();
+                            await page.evaluate(el => el.click(), dlBtns[0]);
                             await waitForDownload(filesBefore);
                             downloadCount++;
                             meta.downloaded = true;
@@ -636,7 +644,7 @@ async function downloadAttachments() {
                     } else {
                         console.log(`[BP]   Downloading: "${meta.description}" (${meta.date})`);
                         const filesBefore = new Set(fs.readdirSync(CFG.DOWNLOAD_DIR));
-                        await dlBtn.click();
+                        await page.evaluate(el => el.click(), dlBtn);
                         await waitForDownload(filesBefore);
                         downloadCount++;
                         meta.downloaded = true;
@@ -650,7 +658,7 @@ async function downloadAttachments() {
                 if (collapseBtn) {
                     const exp = await page.evaluate(el => el.getAttribute('aria-expanded'), collapseBtn);
                     if (exp === 'true') {
-                        await collapseBtn.click();
+                        await page.evaluate(el => el.click(), collapseBtn);
                         await sleep(500);
                     }
                 }
@@ -702,8 +710,9 @@ async function goBack() {
         console.log('[BP] Going back to task list...');
         const btn = await page.$(SX.BACK_BUTTON);
         if (btn) {
+            // Force JS click to bypass Angular loading overlays
             await Promise.all([
-                btn.click(),
+                page.evaluate(el => el.click(), btn),
                 page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30_000 }).catch(() => { }),
             ]);
         } else {
@@ -1185,7 +1194,7 @@ async function downloadAttachmentsInModal() {
                 if (headerBtn) {
                     const expanded = await page.evaluate(el => el.getAttribute('aria-expanded'), headerBtn);
                     if (expanded !== 'true') {
-                        await headerBtn.click();
+                        await page.evaluate(el => el.click(), headerBtn);
                         await sleep(1500);
                     }
                 }
@@ -1219,7 +1228,7 @@ async function downloadAttachmentsInModal() {
                         if (dlBtns.length > 0) {
                             console.log(`[BP]   Downloading: "${meta.description}" (${meta.date})`);
                             const filesBefore = new Set(fs.readdirSync(CFG.DOWNLOAD_DIR));
-                            await dlBtns[0].click();
+                            await page.evaluate(el => el.click(), dlBtns[0]);
                             await waitForDownload(filesBefore);
                             downloadCount++;
                             meta.downloaded = true;
@@ -1229,7 +1238,7 @@ async function downloadAttachmentsInModal() {
                     } else {
                         console.log(`[BP]   Downloading: "${meta.description}" (${meta.date})`);
                         const filesBefore = new Set(fs.readdirSync(CFG.DOWNLOAD_DIR));
-                        await dlBtn.click();
+                        await page.evaluate(el => el.click(), dlBtn);
                         await waitForDownload(filesBefore);
                         downloadCount++;
                         meta.downloaded = true;
@@ -1242,7 +1251,7 @@ async function downloadAttachmentsInModal() {
                 if (collapseBtn) {
                     const exp = await page.evaluate(el => el.getAttribute('aria-expanded'), collapseBtn);
                     if (exp === 'true') {
-                        await collapseBtn.click();
+                        await page.evaluate(el => el.click(), collapseBtn);
                         await sleep(500);
                     }
                 }
