@@ -367,12 +367,13 @@ async function extractCaseInformation() {
 
         /**
          * Extract a single panel by its h5 header text.
-         * Finds the h5, gets closest .card ancestor, extracts label→value pairs.
+         * Finds the h5 (case-insensitive includes), gets closest .card ancestor,
+         * extracts label-value pairs.
          */
-        async function extractSinglePanel(headerRegex) {
-            return page.evaluate((regexStr) => {
-                const regex = new RegExp(regexStr, 'i');
+        async function extractSinglePanel(headerText) {
+            return page.evaluate((searchText) => {
                 const data = {};
+                const needle = searchText.toLowerCase();
 
                 // Helper: clean label (remove hidden ID spans)
                 function cleanLabel(labelEl) {
@@ -387,11 +388,11 @@ async function extractCaseInformation() {
                         .trim();
                 }
 
-                // Find the h5 that matches
+                // Find the h5 that contains the search text
                 const allH5 = document.querySelectorAll('h5');
                 let targetCard = null;
                 for (const h5 of allH5) {
-                    if (regex.test(h5.innerText.trim())) {
+                    if (h5.innerText.trim().toLowerCase().includes(needle)) {
                         // Walk up to find the closest .card ancestor
                         let el = h5;
                         while (el && el !== document.body) {
@@ -443,17 +444,17 @@ async function extractCaseInformation() {
                 });
 
                 return data;
-            }, headerRegex);
+            }, headerText);
         }
 
         // Extract each panel independently
-        const propertyInfo = await extractSinglePanel('Property\\s*Information');
+        const propertyInfo = await extractSinglePanel('Property Information');
         console.log(`[CCMS]   Property fields: ${Object.keys(propertyInfo).length}`);
 
-        const caseDetails = await extractSinglePanel('Case\\s*Detail');
+        const caseDetails = await extractSinglePanel('Case Detail');
         console.log(`[CCMS]   Case detail fields: ${Object.keys(caseDetails).length}`);
 
-        const gisCoords = await extractSinglePanel('GIS\\s*Coordinate');
+        const gisCoords = await extractSinglePanel('GIS Coordinate');
         console.log(`[CCMS]   GIS fields: ${Object.keys(gisCoords).length}`);
 
         const caseInfo = {
