@@ -91,6 +91,35 @@ module.exports = {
         MODAL_ATTACHMENT_PANELS: 'ngb-modal-window ngb-accordion .card',
     },
 
+    // ── CCMS Dashboard Selectors ──────────────────────────────────
+    SEL_CCMS_DASH: {
+        VIEW_MORE: 'a[routerlink="/ucms"]',
+        TOTAL_CASES: null, // found dynamically — border-primary rounded-circle near CCMS card
+    },
+
+    // ── CCMS Detail Page Selectors ──────────────────────────────
+    SEL_CCMS: {
+        // Tabs
+        TAB_CASE_INFO: '#tab-caf',
+        TAB_WORKFLOW: '#tab-workflow',
+        TAB_ACTION: '#tab-action',
+        // Case Information
+        PROPERTY_PANEL: null, // found dynamically — panel with "Property Information"
+        CASE_DETAIL_PANEL: null, // found dynamically — panel with "Case Details"
+        GIS_PANEL: null, // found dynamically — panel with "GIS Coordinates"
+        // Action tab
+        ACTION_SELECT: 'select#action',
+        REMARKS_INPUT: 'textarea#noting',
+        SAVE_DRAFT_BTN: null, // found dynamically — button with "Save Draft"
+        DONE_BTN: null, // found dynamically — button with "Done" (LOCKED)
+        // Task list
+        TASK_LIST_TABLE: 'table[listtable]',
+        TASK_LIST_ROWS: 'table[listtable] tbody tr',
+        ROW_ACTION_BTN: 'td:last-child button',
+        // Heading
+        HEADING: 'strong',
+    },
+
     // ── Default Filters ──────────────────────────────────────────
     DEFAULT_FILTERS: {
         action: 'Sec Verification',

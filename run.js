@@ -1,5 +1,5 @@
 /**
- * run.js — CLI runner: auto-login with OCR CAPTCHA, then run full workflow.
+ * run.js — CLI runner: login, choose module (BP / CCMS), run workflow.
  *
  * Usage:
  *   Terminal 1:  node server.js
@@ -9,7 +9,6 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { createWorker } = require('tesseract.js');
 const CFG = require('./config');
 
 // ─── Helpers ─────────────────────────────────────────────────────
@@ -39,34 +38,14 @@ function request(method, apiPath, body = null) {
     });
 }
 
-async function solveCaptcha(base64Image) {
-    console.log('[OCR] Initializing Tesseract…');
-    const imgBuf = Buffer.from(base64Image.replace(/^data:image\/\w+;base64,/, ''), 'base64');
-    const capPath = path.join(CFG.SCREENSHOT_DIR, 'captcha_latest.png');
-    if (!fs.existsSync(CFG.SCREENSHOT_DIR)) fs.mkdirSync(CFG.SCREENSHOT_DIR, { recursive: true });
-    fs.writeFileSync(capPath, imgBuf);
-
-    const worker = await createWorker('eng');
-    await worker.setParameters({
-        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
-        tessedit_pageseg_mode: '7',
-    });
-    const { data: { text } } = await worker.recognize(capPath);
-    await worker.terminate();
-
-    const cleaned = text.trim().replace(/\s/g, '');
-    console.log(`[OCR] Result: "${cleaned}"`);
-    return cleaned;
-}
-
 // ─── Main ────────────────────────────────────────────────────────
 async function main() {
     console.log('╔══════════════════════════════════════════════════╗');
-    console.log('║   BUILDING PERMIT — FULL AUTOMATION             ║');
+    console.log('║   EASE APP — FULL AUTOMATION                    ║');
     console.log('╚══════════════════════════════════════════════════╝');
     console.log('');
 
-    // ── Readline for interactive prompts ──────────────────────────
+    // ── Readline ─────────────────────────────────────────────────
     const rl = require('readline').createInterface({
         input: process.stdin,
         output: process.stdout,
@@ -91,14 +70,12 @@ async function main() {
         }
         console.log('[Login] Credentials entered. CAPTCHA is on screen.');
 
-        // Prompt user to type the CAPTCHA
         const captchaText = (await ask('  Enter CAPTCHA: ')).trim();
         if (!captchaText) {
             console.warn('[Login] No CAPTCHA entered. Retrying…');
             continue;
         }
 
-        // Submit CAPTCHA
         console.log(`[Login] Submitting CAPTCHA: "${captchaText}"…`);
         const compRes = await request('POST', '/auth/complete', { captchaText });
 
@@ -117,38 +94,146 @@ async function main() {
         return;
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    //  MODULE SELECTION
+    // ═══════════════════════════════════════════════════════════════
     console.log('\n┌──────────────────────────────────────┐');
-    console.log('│  Choose a mode:                      │');
-    console.log('│    T = Task List                     │');
-    console.log('│    P = Proposal List                 │');
+    console.log('│  Choose a module:                    │');
+    console.log('│    1 = Building Permit (BP)          │');
+    console.log('│    2 = Court Case Management (CCMS)  │');
     console.log('└──────────────────────────────────────┘');
-    const mode = (await ask('  Mode (T/P): ')).trim().toUpperCase();
+    const moduleChoice = (await ask('  Module (1/2): ')).trim();
 
     let endpoint, body;
 
-    if (mode === 'P') {
-        // ── PROPOSAL LIST ──
-        console.log('\n── Proposal List Mode ──');
-        const fileNo = (await ask('  File No (or press Enter to skip): ')).trim();
-        const applicantName = (await ask('  Applicant Name (or press Enter to skip): ')).trim();
-        endpoint = '/api/run-proposal';
-        body = { fileNo, applicantName };
-        console.log(`\n  Params: ${JSON.stringify(body)}`);
+    if (moduleChoice === '2') {
+        // ═════════════════════════════════════════════════════════
+        //  CCMS FLOW
+        // ═════════════════════════════════════════════════════════
+        console.log('\n══ Court Case Management System ══');
+
+        // ── Action filter ──
+        console.log('\n  Action filter options:');
+        console.log('    1. Notice Generation(CCMS)');
+        console.log('    2. Order/Notice Letter Signing(CCMS)');
+        console.log('    3. Hearing (CCMS)');
+        console.log('    4. Intralocatory application');
+        console.log('    5. Site Inspection Report by JE');
+        console.log('    6. Notice/Order Verification(CCMS)');
+        console.log('    0. Skip (no filter)');
+        const actionChoice = (await ask('  Select Action (0-6): ')).trim();
+        const actionMap = {
+            '1': '1850', '2': '1993', '3': '1890',
+            '4': '1846', '5': '1881', '6': '1853',
+        };
+        const actionFilter = actionMap[actionChoice] || '';
+
+        // ── Sector filter ──
+        console.log('\n  Sector filter options:');
+        console.log('    1.  Bhadrabad Left Hand Side of Haridwar-Delhi New Highway');
+        console.log('    2.  Bhadrabad Outer Nagar Nigam');
+        console.log('    3.  Bhadrabad Right Hand Side of Haridwar-Delhi New Highway');
+        console.log('    4.  Bhadrabad Under Nagar Nigam');
+        console.log('    5.  Bhagwanpur Left Hand Side of Roorkee-Dehradun Highway');
+        console.log('    6.  Bhagwanpur Right Hand Side of Roorkee-Dehradun Highway');
+        console.log('    7.  Bhupatwala');
+        console.log('    8.  Haridwar');
+        console.log('    9.  Jwalapur Outer Nagar Nigam');
+        console.log('    10. Jwalapur Under Nagar Nigam');
+        console.log('    11. Kankhal Outer Nagar Nigam');
+        console.log('    12. Kankhal Under Nagar Nigam');
+        console.log('    13. Laksar');
+        console.log('    14. Mayapur');
+        console.log('    15. Roorkee Civil Lines');
+        console.log('    16. Roorkee Left Hand Side of Haridwar-Delhi New Highway');
+        console.log('    17. Roorkee Right Hand Side of Haridwar-Delhi New Highway');
+        console.log('    18. Saptsarowar');
+        console.log('    0.  Skip (no filter)');
+        const sectorChoice = (await ask('  Select Sector (0-18): ')).trim();
+        const sectorMap = {
+            '1': 'HRDA-017', '2': 'HRDA-014', '3': 'HRDA-018',
+            '4': 'HRDA-005', '5': 'HRDA-012', '6': 'HRDA-016',
+            '7': 'HRDA-008', '8': 'HRDA-002', '9': 'HRDA-004',
+            '10': 'HRDA-003', '11': 'HRDA-007', '12': 'HRDA-006',
+            '13': 'HRDA-013', '14': 'HRDA-001', '15': 'HRDA-015',
+            '16': 'HRDA-011', '17': 'HRDA-010', '18': 'HRDA-009',
+        };
+        const sectorFilter = sectorMap[sectorChoice] || '';
+
+        body = {};
+        if (actionFilter) body.actionFilter = actionFilter;
+        if (sectorFilter) body.sectorFilter = sectorFilter;
+
+        // ── Action tab (optional) ──
+        const wantAction = (await ask('\n  Perform action on the case? (Y/N): ')).trim().toUpperCase();
+        if (wantAction === 'Y') {
+            console.log('\n  Action options:');
+            console.log('    1.  Seal Property');
+            console.log('    2.  Demolish Property');
+            console.log('    3.  Compounding');
+            console.log('    4.  Next Hearing Date');
+            console.log('    5.  Close Case');
+            console.log('    6.  Demolish - Show Cause');
+            console.log('    7.  Seal - Show Cause');
+            console.log('    8.  Inspection');
+            console.log('    9.  Intrim order');
+            console.log('    10. Final order');
+            console.log('    11. Stay Order');
+            console.log('    12. Drop Case');
+            const caseActionChoice = (await ask('  Select action (1-12): ')).trim();
+            const caseActionMap = {
+                '1': '410', '2': '420', '3': '430', '4': '440',
+                '5': '450', '6': '460', '7': '470', '8': '471',
+                '9': '473', '10': '474', '11': '500', '12': '510',
+            };
+            const actionValue = caseActionMap[caseActionChoice] || '';
+
+            const remarks = (await ask('  Enter Remarks/Comment: ')).trim();
+
+            if (actionValue) {
+                body.performAction = { actionValue, remarks };
+            }
+        }
+
+        endpoint = '/api/run-ccms';
+        console.log(`\n  CCMS Params: ${JSON.stringify(body)}`);
+
     } else {
-        // ── TASK LIST (default) ──
-        console.log('\n── Task List Mode ──');
-        console.log('  Action filter: "Sec Verification" (fixed)');
-        const searchColumn = (await ask('  Search By Column (or press Enter to skip): ')).trim();
-        const searchKeyword = (await ask('  Search Keyword (or press Enter to skip): ')).trim();
-        endpoint = '/api/run-workflow';
-        body = { action: 'Sec Verification' };
-        if (searchColumn) body.searchColumn = searchColumn;
-        if (searchKeyword) body.searchKeyword = searchKeyword;
-        console.log(`\n  Filters: ${JSON.stringify(body)}`);
+        // ═════════════════════════════════════════════════════════
+        //  BUILDING PERMIT FLOW
+        // ═════════════════════════════════════════════════════════
+        console.log('\n══ Building Permit ══');
+        console.log('\n┌──────────────────────────────────────┐');
+        console.log('│  Choose BP mode:                     │');
+        console.log('│    T = Task List                     │');
+        console.log('│    P = Proposal List                 │');
+        console.log('└──────────────────────────────────────┘');
+        const bpMode = (await ask('  Mode (T/P): ')).trim().toUpperCase();
+
+        if (bpMode === 'P') {
+            console.log('\n── Proposal List Mode ──');
+            const fileNo = (await ask('  File No (or press Enter to skip): ')).trim();
+            const applicantName = (await ask('  Applicant Name (or press Enter to skip): ')).trim();
+            endpoint = '/api/run-proposal';
+            body = { fileNo, applicantName };
+        } else {
+            console.log('\n── Task List Mode ──');
+            console.log('  Action filter: "Sec Verification" (fixed)');
+            const searchColumn = (await ask('  Search By Column (or press Enter to skip): ')).trim();
+            const searchKeyword = (await ask('  Search Keyword (or press Enter to skip): ')).trim();
+            endpoint = '/api/run-workflow';
+            body = { action: 'Sec Verification' };
+            if (searchColumn) body.searchColumn = searchColumn;
+            if (searchKeyword) body.searchKeyword = searchKeyword;
+        }
+        console.log(`\n  Params: ${JSON.stringify(body)}`);
     }
+
     rl.close();
 
-    // ── RUN ──────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    //  RUN
+    // ═══════════════════════════════════════════════════════════════
     console.log('\n── RUNNING WORKFLOW ──');
 
     try {
@@ -178,6 +263,29 @@ async function main() {
             }
         }
 
+        // CCMS: Case Information
+        if (data.case_information) {
+            const ci = data.case_information;
+            if (ci.property_information && Object.keys(ci.property_information).length > 0) {
+                console.log('\n── Property Information ──');
+                for (const [k, v] of Object.entries(ci.property_information)) {
+                    if (v) console.log(`  ${k.padEnd(22)}: ${v}`);
+                }
+            }
+            if (ci.case_details && Object.keys(ci.case_details).length > 0) {
+                console.log('\n── Case Details ──');
+                for (const [k, v] of Object.entries(ci.case_details)) {
+                    if (v) console.log(`  ${k.padEnd(30)}: ${v.substring(0, 80)}`);
+                }
+            }
+            if (ci.gis_coordinates && Object.keys(ci.gis_coordinates).length > 0) {
+                console.log('\n── GIS Coordinates ──');
+                for (const [k, v] of Object.entries(ci.gis_coordinates)) {
+                    if (v) console.log(`  ${k.padEnd(12)}: ${v}`);
+                }
+            }
+        }
+
         console.log(`\n── Workflow Steps: ${data.workflow ? data.workflow.length : 0} ──`);
         if (data.workflow) {
             data.workflow.forEach((step, i) => {
@@ -188,9 +296,20 @@ async function main() {
             });
         }
 
+        // CCMS: Action result
+        if (data.action_result) {
+            console.log('\n── Action Result ──');
+            console.log(`  Success: ${data.action_result.success}`);
+            if (data.action_result.action) console.log(`  Action: ${data.action_result.action}`);
+            if (data.action_result.remarks) console.log(`  Remarks: ${data.action_result.remarks}`);
+        }
+
+        // BP: Attachments
         const files = data.attachments?.files || [];
-        console.log(`\n── Attachments: ${files.length} files ──`);
-        files.forEach(f => console.log(`  • ${f}`));
+        if (files.length > 0) {
+            console.log(`\n── Attachments: ${files.length} files ──`);
+            files.forEach(f => console.log(`  • ${f}`));
+        }
 
         // Save to disk
         fs.writeFileSync(CFG.OUTPUT_FILE, JSON.stringify(data, null, 2));
