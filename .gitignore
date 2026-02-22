@@ -4,3 +4,6 @@ screenshots/
 extracted_data.json
 eng.traineddata
 *.crdownload
+token.json
+oauth-credentials.json
+credentials.json

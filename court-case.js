@@ -181,6 +181,7 @@ async function applyCCMSFilters(params = {}) {
             await page.$eval(selector, e => {
                 e.dispatchEvent(new Event('change', { bubbles: true }));
                 e.dispatchEvent(new Event('input', { bubbles: true }));
+                e.dispatchEvent(new Event('blur', { bubbles: true }));
             });
             await sleep(2000);
 
@@ -729,25 +730,40 @@ async function performAction(params = {}) {
             }
         }
 
-        // Select action from dropdown
+        // Select action from dropdown using DOM injection for maximum stability
         if (params.actionValue) {
-            await page.select(CC.ACTION_SELECT, params.actionValue);
+            await page.evaluate((sel, v) => {
+                const el = document.querySelector(sel);
+                if (el) {
+                    el.value = v;
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('blur', { bubbles: true }));
+                }
+            }, CC.ACTION_SELECT, params.actionValue);
+
             console.log(`[CCMS] ✅ Selected action: ${params.actionValue}`);
             await sleep(1000);
         }
 
-        // Type remarks
+        // Type remarks using DOM injection
         if (params.remarks) {
-            const textarea = await page.$(CC.REMARKS_INPUT);
-            if (textarea) {
-                await textarea.click({ clickCount: 3 });
-                await textarea.type(params.remarks);
-                console.log(`[CCMS] ✅ Typed remarks: "${params.remarks.substring(0, 50)}..."`);
-            }
+            await page.evaluate((sel, text) => {
+                const el = document.querySelector(sel);
+                if (el) {
+                    el.value = text;
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('blur', { bubbles: true }));
+                }
+            }, CC.REMARKS_INPUT, params.remarks);
+
+            console.log(`[CCMS] ✅ Typed remarks: "${params.remarks.substring(0, 50)}..."`);
+            await sleep(1000);
         }
 
-        // Click Save Draft or Done
-        if (params.clickDone) {
+        // Click Save Draft or Done (or skip if null/undefined)
+        if (params.clickDone === true) {
             // Find and click Done button
             const doneBtn = await page.evaluateHandle(() => {
                 const btns = document.querySelectorAll('button');
@@ -758,13 +774,16 @@ async function performAction(params = {}) {
             });
             const doneEl = doneBtn.asElement();
             if (doneEl) {
-                await doneEl.click();
+                await page.evaluate(el => {
+                    el.removeAttribute('disabled');
+                    el.click();
+                }, doneEl);
                 console.log('[CCMS] ✅ Clicked Done.');
                 await sleep(3000);
             } else {
                 console.warn('[CCMS] Done button not found.');
             }
-        } else {
+        } else if (params.clickDone === false) {
             // Find and click Save Draft
             const saveDraftBtn = await page.evaluateHandle(() => {
                 const btns = document.querySelectorAll('button');
@@ -775,12 +794,17 @@ async function performAction(params = {}) {
             });
             const saveDraftEl = saveDraftBtn.asElement();
             if (saveDraftEl) {
-                await saveDraftEl.click();
+                await page.evaluate(el => {
+                    el.removeAttribute('disabled');
+                    el.click();
+                }, saveDraftEl);
                 console.log('[CCMS] ✅ Clicked Save Draft.');
                 await sleep(3000);
             } else {
                 console.warn('[CCMS] Save Draft button not found.');
             }
+        } else {
+            console.log('[CCMS] ⏭ Skipped clicking any submit buttons.');
         }
 
         await screenshot('ccms_action_done');
