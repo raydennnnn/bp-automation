@@ -96,6 +96,20 @@ app.post('/api/run-ccms', async (req, res) => {
     }
 });
 
+// ── Dashboard Reset ──────────────────────────────────────────
+app.post('/api/dashboard', async (req, res) => {
+    try {
+        const page = bm.getPage();
+        if (!page) return res.status(400).json({ success: false, error: 'Browser not active' });
+        console.log('[Server] Navigating back to main dashboard...');
+        await page.goto(CFG.DASHBOARD_URL, { waitUntil: 'domcontentloaded', timeout: CFG.NAV_TIMEOUT });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[Server] Dashboard navigation error:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // ── Start ────────────────────────────────────────────────────────
 app.listen(PORT, () => {
     console.log(`\n  Automation Server running on http://127.0.0.1:${PORT}`);

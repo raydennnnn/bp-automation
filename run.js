@@ -357,6 +357,9 @@ async function main() {
             console.log('\n── Uploading to Google Drive ──');
             await uploadToDrive();
 
+            console.log('\n── Resetting Browser to Dashboard ──');
+            await request('POST', '/api/dashboard');
+
             console.log('\nPress Enter to return to the main menu...');
             await ask(''); // Wait for user acknowledgment
 

@@ -684,18 +684,48 @@ async function downloadAttachments() {
  */
 async function waitForDownload(filesBefore) {
     const start = Date.now();
-    const timeout = CFG.DOWNLOAD_TIMEOUT;
+    const timeout = CFG.DOWNLOAD_TIMEOUT || 10000;
+
+    // Phase 1: Wait for the download to start (a .crdownload file appears)
+    // or finish so fast that a new fully downloaded file just appears instantly.
+    let started = false;
+    let finishedInstantly = false;
 
     while (Date.now() - start < timeout) {
-        await sleep(500);
         const current = fs.readdirSync(CFG.DOWNLOAD_DIR);
         const hasCrdownload = current.some(f => f.endsWith('.crdownload'));
         const hasNew = current.some(f => !filesBefore.has(f) && !f.endsWith('.crdownload'));
 
-        if (hasNew && !hasCrdownload) {
-            return; // download finished
+        if (hasCrdownload) {
+            started = true;
+            break;
         }
+        if (hasNew) {
+            finishedInstantly = true;
+            break;
+        }
+        await sleep(50); // fast polling
     }
+
+    if (finishedInstantly) return;
+
+    if (!started) {
+        console.warn('[BP] Download never started (no .crdownload seen).');
+        return;
+    }
+
+    // Phase 2: Wait for it to finish (all .crdownload files disappear and a new file exists)
+    while (Date.now() - start < timeout) {
+        const current = fs.readdirSync(CFG.DOWNLOAD_DIR);
+        const hasCrdownload = current.some(f => f.endsWith('.crdownload'));
+        const hasNew = current.some(f => !filesBefore.has(f) && !f.endsWith('.crdownload'));
+
+        if (!hasCrdownload && hasNew) {
+            return; // Download complete
+        }
+        await sleep(50); // fast polling
+    }
+
     console.warn('[BP] Download wait timed out (may still be downloading).');
 }
 
