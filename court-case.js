@@ -109,24 +109,42 @@ async function getSelectOptions(page, selector) {
  */
 async function findCCMSDropdowns(page) {
     const result = await page.evaluate(() => {
-        const selects = document.querySelectorAll('select.form-control');
+        const selects = document.querySelectorAll('select');
         let actionSel = null;
         let sectorSel = null;
-        selects.forEach((sel, idx) => {
-            const firstOpt = sel.querySelector('option');
-            if (!firstOpt) return;
-            const txt = firstOpt.innerText.trim();
-            if (/Select Action/i.test(txt)) {
-                sel.id = sel.id || `__ccms_action_${idx}`;
-                actionSel = '#' + sel.id;
+
+        for (let i = 0; i < selects.length; i++) {
+            const s = selects[i];
+            const firstOpt = s.options && s.options[0];
+            if (!firstOpt) continue;
+
+            const txt = firstOpt.text || '';
+
+            if (/Action/i.test(txt) && !actionSel) {
+                if (!s.id) s.id = `__ccms_action_filter_${i}__`;
+                actionSel = '#' + s.id;
             }
-            if (/Select Sector/i.test(txt)) {
-                sel.id = sel.id || `__ccms_sector_${idx}`;
-                sectorSel = '#' + sel.id;
+            if (/Sector/i.test(txt) && !sectorSel) {
+                if (!s.id) s.id = `__ccms_sector_filter_${i}__`;
+                sectorSel = '#' + s.id;
             }
-        });
-        return { actionSel, sectorSel };
+        }
+
+        return { actionSel, sectorSel, totalFound: selects.length };
     });
+
+    if (result.actionSel) {
+        console.log(`[CCMS] ✅ Found Action dropdown: ${result.actionSel}`);
+    } else {
+        console.warn(`[CCMS] ⚠ Action dropdown not found (scanned ${result.totalFound} selects)`);
+    }
+
+    if (result.sectorSel) {
+        console.log(`[CCMS] ✅ Found Sector dropdown: ${result.sectorSel}`);
+    } else {
+        console.warn(`[CCMS] ⚠ Sector dropdown not found (scanned ${result.totalFound} selects)`);
+    }
+
     return result;
 }
 
@@ -144,15 +162,40 @@ async function applyCCMSFilters(params = {}) {
     try {
         const { actionSel, sectorSel } = await findCCMSDropdowns(page);
 
+        async function selectDropdownOption(selector, value) {
+            const el = await page.$(selector);
+            if (!el) {
+                console.warn(`[CCMS] ❌ Dropdown selector not found: ${selector}`);
+                return false;
+            }
+
+            // 1. Wait/Scroll into view
+            await page.evaluate(e => e.scrollIntoView({ block: 'center' }), el);
+            await sleep(300);
+
+            // 2. native select
+            console.log(`[CCMS] Selecting value "${value}" on ${selector}...`);
+            await page.select(selector, value);
+
+            // 3. Dispatch events to trigger Angular bindings
+            await page.$eval(selector, e => {
+                e.dispatchEvent(new Event('change', { bubbles: true }));
+                e.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+            await sleep(2000);
+
+            return true;
+        }
+
         if (params.actionValue && actionSel) {
-            await page.select(actionSel, params.actionValue);
-            console.log(`[CCMS] ✅ Selected action: ${params.actionValue}`);
+            await selectDropdownOption(actionSel, params.actionValue);
+            console.log(`[CCMS] ✅ Selected action. Value: ${params.actionValue}`);
             await sleep(2000);
         }
 
         if (params.sectorValue && sectorSel) {
-            await page.select(sectorSel, params.sectorValue);
-            console.log(`[CCMS] ✅ Selected sector: ${params.sectorValue}`);
+            await selectDropdownOption(sectorSel, params.sectorValue);
+            console.log(`[CCMS] ✅ Selected sector. Value: ${params.sectorValue}`);
             await sleep(2000);
         }
 
@@ -351,18 +394,28 @@ async function extractCaseInformation() {
         if (tab) {
             const isActive = await page.evaluate(el => el.classList.contains('active'), tab);
             if (!isActive) {
-                await tab.click();
-                await sleep(3000);
+                // Force JS click to bypass Angular overlays
+                await page.evaluate(el => el.click(), tab);
+                await sleep(2000);
             }
         }
 
-        // Wait for panels
+        // Wait until Case Information tab is actually active (aria-selected becomes true)
         try {
-            await page.waitForSelector('.card h5', { visible: true, timeout: 10_000 });
+            await page.waitForFunction(
+                () => {
+                    const tab = document.querySelector('#tab-caf');
+                    return tab && tab.getAttribute('aria-selected') === 'true';
+                },
+                { timeout: 15_000 }
+            );
+            console.log('[CCMS] Case Information tab is now active.');
         } catch (_) {
             console.warn('[CCMS] No panels found after clicking Case Information tab.');
         }
-        await sleep(2000);
+
+        // Wait extra time for the actual data to populate inside the tab
+        await sleep(5000);
         await screenshot('ccms_before_case_extract');
 
         /**
