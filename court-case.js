@@ -200,6 +200,31 @@ async function applyCCMSFilters(params = {}) {
             await sleep(2000);
         }
 
+        if (params.searchColumn) {
+            const searchColEl = await page.$(CFG.SEL_BP.SEARCH_COLUMN);
+            if (searchColEl) {
+                console.log(`[CCMS] Selecting search column "${params.searchColumn}"...`);
+                await page.select(CFG.SEL_BP.SEARCH_COLUMN, params.searchColumn);
+                await page.$eval(CFG.SEL_BP.SEARCH_COLUMN, e => e.dispatchEvent(new Event('change', { bubbles: true })));
+                await sleep(1000);
+            } else {
+                console.warn('[CCMS] ⚠ Search column dropdown not found on this dashboard variant.');
+            }
+        }
+
+        if (params.searchKeyword) {
+            const kwEl = await page.$(CFG.SEL_BP.SEARCH_KEYWORD);
+            if (kwEl) {
+                await page.click(CFG.SEL_BP.SEARCH_KEYWORD, { clickCount: 3 });
+                await page.type(CFG.SEL_BP.SEARCH_KEYWORD, params.searchKeyword);
+                console.log(`[CCMS] Typed search keyword: "${params.searchKeyword}"`);
+                await sleep(1000);
+
+                // Press Enter to trigger the search (CCMS sometimes requires explicit enter)
+                await page.keyboard.press('Enter');
+            }
+        }
+
         await sleep(2000);
         await screenshot('ccms_after_filters');
         return { success: true };

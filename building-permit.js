@@ -199,10 +199,17 @@ async function applyFilters(filters = {}) {
             await page.click(ST.SEARCH_KEYWORD, { clickCount: 3 });
             await page.type(ST.SEARCH_KEYWORD, filters.searchKeyword);
             console.log(`[BP] Typed keyword: "${filters.searchKeyword}"`);
+
+            // Trigger the search by pressing Enter
+            await page.keyboard.press('Enter');
+            console.log('[BP] Pressed Enter to execute search.');
+
+            // Wait extra time for the Angular grid to destroy the old rows and fetch/render the new ones
+            await sleep(4000);
         }
     }
 
-    await sleep(3000);
+    await sleep(2000);
     await screenshot('after_filters');
     console.log('[BP] ✅ Filters applied.');
     return { success: true };
@@ -252,12 +259,26 @@ async function openRow(rowIndex = 0) {
     if (!page) return { success: false, error: 'No session' };
 
     try {
-        const sel = ST.ROW_ACTION_BTN(rowIndex);
-        console.log(`[BP] Clicking row ${rowIndex} action: ${sel}`);
-        await page.waitForSelector(sel, { timeout: 10_000 });
+        await page.waitForSelector(ST.TABLE_ROWS, { timeout: 10_000 });
+
+        // --- ADDED: Wait 3 seconds for Angular to finish any refiltering animations/re-renders ---
+        console.log('[BP] Waiting 3s for grid to stabilize...');
+        await sleep(3000);
+
+        // Fetch the fresh rows *after* the sleep to prevent StaleElementReference errors
+        const rows = await page.$$(ST.TABLE_ROWS);
+
+        if (rowIndex >= rows.length) {
+            return { success: false, error: `Row ${rowIndex} not found (only ${rows.length} rows)` };
+        }
+
+        const btn = await rows[rowIndex].$('td:last-child button');
+        if (!btn) return { success: false, error: 'Action button not found in row' };
+
+        console.log(`[BP] Clicking View/Action button on row ${rowIndex}...`);
 
         await Promise.all([
-            page.click(sel),
+            page.evaluate(el => el.click(), btn),
             page.waitForNavigation({ waitUntil: 'networkidle2', timeout: CFG.NAV_TIMEOUT }).catch(() => { }),
         ]);
         await sleep(3000);

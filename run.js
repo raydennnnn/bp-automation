@@ -191,6 +191,28 @@ async function main() {
             if (actionFilter) body.actionFilter = actionFilter;
             if (sectorFilter) body.sectorFilter = sectorFilter;
 
+            // ── Search By Column ──
+            console.log('\n  Search By Column options (CCMS):');
+            console.log('    1. Application No');
+            console.log('    2. File No');
+            console.log('    3. Assigned Date');
+            console.log('    4. Applicant Name');
+            console.log('    5. Status');
+            console.log('    0. Skip (Just normal extraction)');
+            const searchColumnChoice = (await ask('  Select Column (0-5): ')).trim();
+            const searchColumnMap = {
+                '1': '1: customFolderNumber',
+                '2': '2: referenceFile',
+                '3': '3: scheduleDate',
+                '4': '4: applicantName',
+                '5': '5: statusDesc',
+            };
+            const searchColumn = searchColumnMap[searchColumnChoice];
+            const searchKeyword = (await ask('  Search Keyword (or press Enter to skip): ')).trim();
+
+            if (searchColumn) body.searchColumn = searchColumn;
+            if (searchKeyword) body.searchKeyword = searchKeyword;
+
             // ── Action tab (optional) ──
             const wantAction = (await ask('\n  Perform action on the case? (Y/N): ')).trim().toUpperCase();
             if (wantAction === 'Y') {
@@ -259,8 +281,26 @@ async function main() {
             } else {
                 console.log('\n── Task List Mode ──');
                 console.log('  Action filter: "Sec Verification" (fixed)');
-                const searchColumn = (await ask('  Search By Column (or press Enter to skip): ')).trim();
+
+                console.log('\n  Search By Column options:');
+                console.log('    1. Application No');
+                console.log('    2. File No');
+                console.log('    3. Assigned Date');
+                console.log('    4. Applicant Name');
+                console.log('    5. Status');
+                console.log('    0. Skip (Just normal extraction)');
+                const searchColumnChoice = (await ask('  Select Column (0-5): ')).trim();
+                const searchColumnMap = {
+                    '1': '1: customFolderNumber',
+                    '2': '2: referenceFile',
+                    '3': '3: scheduleDate',
+                    '4': '4: applicantName',
+                    '5': '5: statusDesc',
+                };
+                const searchColumn = searchColumnMap[searchColumnChoice];
+
                 const searchKeyword = (await ask('  Search Keyword (or press Enter to skip): ')).trim();
+
                 endpoint = '/api/run-workflow';
                 body = { action: 'Sec Verification' };
                 if (searchColumn) body.searchColumn = searchColumn;
