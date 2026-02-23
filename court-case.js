@@ -420,39 +420,28 @@ async function extractCaseInformation() {
         if (tab) {
             const isActive = await page.evaluate(el => el.classList.contains('active'), tab);
             if (!isActive) {
-                // Force JS click to bypass Angular overlays
-                await page.evaluate(el => el.click(), tab);
-                await sleep(2000);
+                await tab.click();
+                await sleep(3000);
             }
         }
 
-        // Wait until Case Information tab is actually active (aria-selected becomes true)
+        // Wait for panels
         try {
-            await page.waitForFunction(
-                () => {
-                    const tab = document.querySelector('#tab-caf');
-                    return tab && tab.getAttribute('aria-selected') === 'true';
-                },
-                { timeout: 15_000 }
-            );
-            console.log('[CCMS] Case Information tab is now active.');
+            await page.waitForSelector('.card h5', { visible: true, timeout: 10_000 });
         } catch (_) {
             console.warn('[CCMS] No panels found after clicking Case Information tab.');
         }
-
-        // Wait extra time for the actual data to populate inside the tab
-        await sleep(5000);
+        await sleep(2000);
         await screenshot('ccms_before_case_extract');
 
         /**
          * Extract a single panel by its h5 header text.
-         * Finds the h5 (case-insensitive includes), gets closest .card ancestor,
-         * extracts label-value pairs.
+         * Finds the h5, gets closest .card ancestor, extracts label→value pairs.
          */
-        async function extractSinglePanel(headerText) {
-            return page.evaluate((searchText) => {
+        async function extractSinglePanel(headerRegex) {
+            return page.evaluate((regexStr) => {
+                const regex = new RegExp(regexStr, 'i');
                 const data = {};
-                const needle = searchText.toLowerCase();
 
                 // Helper: clean label (remove hidden ID spans)
                 function cleanLabel(labelEl) {
@@ -467,11 +456,11 @@ async function extractCaseInformation() {
                         .trim();
                 }
 
-                // Find the h5 that contains the search text
+                // Find the h5 that matches
                 const allH5 = document.querySelectorAll('h5');
                 let targetCard = null;
                 for (const h5 of allH5) {
-                    if (h5.innerText.trim().toLowerCase().includes(needle)) {
+                    if (regex.test(h5.innerText.trim())) {
                         // Walk up to find the closest .card ancestor
                         let el = h5;
                         while (el && el !== document.body) {
@@ -523,17 +512,17 @@ async function extractCaseInformation() {
                 });
 
                 return data;
-            }, headerText);
+            }, headerRegex);
         }
 
         // Extract each panel independently
-        const propertyInfo = await extractSinglePanel('Property Information');
+        const propertyInfo = await extractSinglePanel('Property\\s*Information');
         console.log(`[CCMS]   Property fields: ${Object.keys(propertyInfo).length}`);
 
-        const caseDetails = await extractSinglePanel('Case Detail');
+        const caseDetails = await extractSinglePanel('Case\\s*Detail');
         console.log(`[CCMS]   Case detail fields: ${Object.keys(caseDetails).length}`);
 
-        const gisCoords = await extractSinglePanel('GIS Coordinate');
+        const gisCoords = await extractSinglePanel('GIS\\s*Coordinate');
         console.log(`[CCMS]   GIS fields: ${Object.keys(gisCoords).length}`);
 
         const caseInfo = {
