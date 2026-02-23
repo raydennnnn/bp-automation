@@ -19,7 +19,8 @@ const ccms = require('./court-case');
 const bm = require('./browser-manager');
 
 const app = express();
-const PORT = require('./config').SERVER_PORT;
+const CFG = require('./config');
+const PORT = CFG.SERVER_PORT;
 
 app.use(cors());
 app.use(express.json());
@@ -101,8 +102,18 @@ app.post('/api/dashboard', async (req, res) => {
     try {
         const page = bm.getPage();
         if (!page) return res.status(400).json({ success: false, error: 'Browser not active' });
-        console.log('[Server] Navigating back to main dashboard...');
-        await page.goto(CFG.DASHBOARD_URL, { waitUntil: 'domcontentloaded', timeout: CFG.NAV_TIMEOUT });
+        console.log('[Server] Clicking Home button back to main dashboard...');
+
+        const homeBtn = await page.$(CFG.BTN_HOME);
+        if (!homeBtn) {
+            console.warn('[Server] Home button not found, falling back to direct navigation.');
+            await page.goto(CFG.DASHBOARD_URL, { waitUntil: 'networkidle2', timeout: CFG.NAV_TIMEOUT });
+        } else {
+            await Promise.all([
+                page.evaluate(el => el.click(), homeBtn),
+                page.waitForNavigation({ waitUntil: 'networkidle2', timeout: CFG.NAV_TIMEOUT }).catch(() => { })
+            ]);
+        }
         res.json({ success: true });
     } catch (err) {
         console.error('[Server] Dashboard navigation error:', err);

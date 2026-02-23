@@ -14,6 +14,7 @@ module.exports = {
     // ── URLs ─────────────────────────────────────────────────────
     LOGIN_URL: 'https://uhudaeaseapp.uk.gov.in/easeapp/',
     DASHBOARD_URL: 'https://uhudaeaseapp.uk.gov.in/easeapp/private',
+    BTN_HOME: 'a[routerlink="/private/dashboard"]',
 
     // ── Timeouts (ms) ────────────────────────────────────────────
     NAV_TIMEOUT: 120_000,   // slow gov site
