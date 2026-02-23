@@ -24,6 +24,29 @@ const PORT = CFG.SERVER_PORT;
 
 app.use(cors());
 app.use(express.json());
+app.use(express.static('public'));
+
+const uploadToDrive = require('./drive-upload');
+const fs = require('fs');
+const path = require('path');
+
+// Ported cleanup logic from run.js to server.js
+function cleanupOldFiles() {
+    console.log('[Server] Cleaning up old extraction data and downloads...');
+    const dataFile = path.join(__dirname, 'extracted_data.json');
+    if (fs.existsSync(dataFile)) {
+        try { fs.unlinkSync(dataFile); } catch (e) { console.error('Error deleting data file:', e); }
+    }
+    const dlDir = path.join(__dirname, 'downloads');
+    if (fs.existsSync(dlDir)) {
+        try {
+            const files = fs.readdirSync(dlDir);
+            for (const f of files) {
+                fs.unlinkSync(path.join(dlDir, f));
+            }
+        } catch (e) { console.error('Error emptying downloads:', e); }
+    }
+}
 
 // Request logger
 app.use((req, res, next) => {
@@ -58,10 +81,16 @@ app.get('/auth/status', (req, res) => {
 // ── BP: Task List ────────────────────────────────────────────
 app.post('/api/run-workflow', async (req, res) => {
     try {
+        cleanupOldFiles();
         const filters = req.body;
         console.log('[Server] Starting BP task-list workflow with filters:', filters);
+
         const result = await bp.runFullWorkflow(filters);
         if (result.success === false) return res.status(500).json(result);
+
+        fs.writeFileSync(path.join(__dirname, 'extracted_data.json'), JSON.stringify(result, null, 2));
+        await uploadToDrive();
+
         res.json({ success: true, data: result });
     } catch (err) {
         console.error('[Server] Workflow error:', err);
@@ -72,10 +101,16 @@ app.post('/api/run-workflow', async (req, res) => {
 // ── BP: Proposal List ────────────────────────────────────────
 app.post('/api/run-proposal', async (req, res) => {
     try {
+        cleanupOldFiles();
         const params = req.body;
         console.log('[Server] Starting BP proposal workflow with params:', params);
+
         const result = await bp.runProposalWorkflow(params);
         if (result.success === false) return res.status(500).json(result);
+
+        fs.writeFileSync(path.join(__dirname, 'extracted_data.json'), JSON.stringify(result, null, 2));
+        await uploadToDrive();
+
         res.json({ success: true, data: result });
     } catch (err) {
         console.error('[Server] Proposal error:', err);
@@ -86,10 +121,16 @@ app.post('/api/run-proposal', async (req, res) => {
 // ── CCMS ─────────────────────────────────────────────────────
 app.post('/api/run-ccms', async (req, res) => {
     try {
+        cleanupOldFiles();
         const params = req.body;
         console.log('[Server] Starting CCMS workflow with params:', params);
+
         const result = await ccms.runCCMSWorkflow(params);
         if (result.success === false) return res.status(500).json(result);
+
+        fs.writeFileSync(path.join(__dirname, 'extracted_data.json'), JSON.stringify(result, null, 2));
+        await uploadToDrive();
+
         res.json({ success: true, data: result });
     } catch (err) {
         console.error('[Server] CCMS error:', err);

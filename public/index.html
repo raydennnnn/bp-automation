@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EaseApp Automation Control</title>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- LOGIN OVERLAY -->
+    <div id="login-overlay" class="login-overlay">
+        <div class="login-box glass-panel">
+            <div class="brand center">
+                <i class="fa-solid fa-robot fa-2x"></i>
+                <h2>Automagic Login</h2>
+            </div>
+
+            <div id="login-step-1">
+                <p class="login-subtitle">Enter your portal credentials to deploy the headless browser.</p>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="loginUser" placeholder="admin">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="loginPass" placeholder="••••••••">
+                        <i class="fa-solid fa-eye" id="togglePassword"></i>
+                    </div>
+                </div>
+                <button class="btn-launch" id="btnStartLogin">
+                    <i class="fa-solid fa-shield-halved"></i> Connect & Fetch CAPTCHA
+                </button>
+            </div>
+
+            <div id="login-step-2" class="hidden">
+                <p class="login-subtitle">Browser launched. Please solve the CAPTCHA.</p>
+                <div class="captcha-container">
+                    <img id="captchaImg" src="" alt="Loading CAPTCHA...">
+                </div>
+                <div class="form-group">
+                    <label>CAPTCHA Code</label>
+                    <input type="text" id="captchaInput" placeholder="Enter text from image" autocomplete="off">
+                </div>
+                <button class="btn-launch" id="btnSubmitCaptcha">
+                    <i class="fa-solid fa-right-to-bracket"></i> Login & Open Dashboard
+                </button>
+            </div>
+
+            <div id="loginError" class="login-error hidden"></div>
+        </div>
+    </div>
+
+    <!-- MAIN APP STRUCTURE -->
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="brand">
+                <i class="fa-solid fa-robot"></i>
+                <h2>Automagic</h2>
+            </div>
+
+            <p class="nav-label">Modules</p>
+            <ul class="nav-links">
+                <li class="active" data-target="bp-panel">
+                    <i class="fa-solid fa-building"></i>
+                    <span>Building Permit</span>
+                </li>
+                <li data-target="ccms-panel">
+                    <i class="fa-solid fa-gavel"></i>
+                    <span>CCMS</span>
+                </li>
+            </ul>
+
+            <div class="status-indicator">
+                <div class="dot green"></div>
+                <span>Server Online</span>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="content">
+            <header>
+                <h1>Execution Dashboard</h1>
+                <p>Configure filters and launch automated headless extractions.</p>
+            </header>
+
+            <div class="dashboard-grid">
+
+                <!-- Left Column: Forms -->
+                <div class="config-section glass-panel">
+
+                    <!-- BP MODULE PANEL -->
+                    <div id="bp-panel" class="module-panel active">
+                        <h3><i class="fa-solid fa-sliders"></i> Building Permit Config</h3>
+
+                        <div class="form-group row-radio">
+                            <label><input type="radio" name="bpMode" value="T" checked> Task List</label>
+                            <label><input type="radio" name="bpMode" value="P"> Proposal List</label>
+                        </div>
+
+                        <!-- Task List Filters -->
+                        <div id="bp-task-filters" class="sub-form">
+                            <div class="form-group">
+                                <label>Action Filter</label>
+                                <input type="text" value="Sec Verification" disabled class="disabled-input">
+                            </div>
+                            <div class="form-group">
+                                <label>Search By Column</label>
+                                <select id="bpSearchColumn">
+                                    <option value="">Skip (No Filter)</option>
+                                    <option value="1: customFolderNumber">Application No</option>
+                                    <option value="2: referenceFile">File No</option>
+                                    <option value="3: scheduleDate">Assigned Date</option>
+                                    <option value="4: applicantName">Applicant Name</option>
+                                    <option value="5: statusDesc">Status</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Search Keyword</label>
+                                <input type="text" id="bpSearchKeyword" placeholder="Enter keyword or leave blank">
+                            </div>
+                        </div>
+
+                        <!-- Proposal List Filters -->
+                        <div id="bp-proposal-filters" class="sub-form hidden">
+                            <div class="form-group">
+                                <label>File No</label>
+                                <input type="text" id="bpFileNo" placeholder="e.g. 12345">
+                            </div>
+                            <div class="form-group">
+                                <label>Applicant Name</label>
+                                <input type="text" id="bpApplicantName" placeholder="e.g. John Doe">
+                            </div>
+                        </div>
+
+                        <button class="btn-launch" id="btnRunBP">
+                            <i class="fa-solid fa-play"></i> Launch Extraction
+                        </button>
+                    </div>
+
+                    <!-- CCMS MODULE PANEL -->
+                    <div id="ccms-panel" class="module-panel hidden">
+                        <h3><i class="fa-solid fa-sliders"></i> CCMS Config</h3>
+
+                        <div class="form-group">
+                            <label>CCMS Action Filter</label>
+                            <select id="ccmsAction">
+                                <option value="">Skip (No Filter)</option>
+                                <option value="1850">Notice Generation(CCMS)</option>
+                                <option value="1993">Order/Notice Letter Signing(CCMS)</option>
+                                <option value="1890">Hearing (CCMS)</option>
+                                <option value="1846">Intralocatory application</option>
+                                <option value="1881">Site Inspection Report by JE</option>
+                                <option value="1853">Notice/Order Verification(CCMS)</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Sector Filter</label>
+                            <select id="ccmsSector">
+                                <option value="">Skip (No Filter)</option>
+                                <option value="HRDA-017">Bhadrabad Left Hand Side</option>
+                                <option value="HRDA-014">Bhadrabad Outer Nagar Nigam</option>
+                                <option value="HRDA-018">Bhadrabad Right Hand Side</option>
+                                <option value="HRDA-005">Bhadrabad Under Nagar Nigam</option>
+                                <option value="HRDA-012">Bhagwanpur Left Hand Side</option>
+                                <option value="HRDA-016">Bhagwanpur Right Hand Side</option>
+                                <option value="HRDA-008">Bhupatwala</option>
+                                <option value="HRDA-002">Haridwar</option>
+                                <option value="HRDA-004">Jwalapur Outer Nagar Nigam</option>
+                                <option value="HRDA-003">Jwalapur Under Nagar Nigam</option>
+                                <option value="HRDA-007">Kankhal Outer Nagar Nigam</option>
+                                <option value="HRDA-006">Kankhal Under Nagar Nigam</option>
+                                <option value="HRDA-013">Laksar</option>
+                                <option value="HRDA-001">Mayapur</option>
+                                <option value="HRDA-015">Roorkee Civil Lines</option>
+                                <option value="HRDA-011">Roorkee Left Hand Side</option>
+                                <option value="HRDA-010">Roorkee Right Hand Side</option>
+                                <option value="HRDA-009">Saptsarowar</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Search By Column</label>
+                            <select id="ccmsSearchColumn">
+                                <option value="">Skip (No Filter)</option>
+                                <option value="1: customFolderNumber">Application No</option>
+                                <option value="2: referenceFile">File No</option>
+                                <option value="3: scheduleDate">Assigned Date</option>
+                                <option value="4: applicantName">Applicant Name</option>
+                                <option value="5: statusDesc">Status</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Search Keyword</label>
+                            <input type="text" id="ccmsSearchKeyword" placeholder="Enter keyword or leave blank">
+                        </div>
+
+                        <!-- CCMS Perform Action -->
+                        <div class="optional-section">
+                            <h4>Perform Action (Optional)</h4>
+                            <div class="form-group">
+                                <label>Action to Perform</label>
+                                <select id="ccmsPerformAction">
+                                    <option value="">Do not perform action</option>
+                                    <option value="410">Seal Property</option>
+                                    <option value="420">Demolish Property</option>
+                                    <option value="430">Compounding</option>
+                                    <option value="440">Next Hearing Date</option>
+                                    <option value="450">Close Case</option>
+                                    <option value="460">Demolish - Show Cause</option>
+                                    <option value="470">Seal - Show Cause</option>
+                                    <option value="471">Inspection</option>
+                                    <option value="473">Intrim order</option>
+                                    <option value="474">Final order</option>
+                                    <option value="500">Stay Order</option>
+                                    <option value="510">Drop Case</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Remarks / Comment</label>
+                                <input type="text" id="ccmsRemarks" placeholder="Leave blank to skip">
+                            </div>
+                            <div class="form-group">
+                                <label>Submit Button Preference</label>
+                                <select id="ccmsSubmitPref">
+                                    <option value="none">Do not click submit</option>
+                                    <option value="done">Click "Done"</option>
+                                    <option value="draft">Click "Save Draft"</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button class="btn-launch" id="btnRunCCMS">
+                            <i class="fa-solid fa-play"></i> Launch Extraction
+                        </button>
+                    </div>
+
+                </div>
+
+                <!-- Right Column: Results & Terminal -->
+                <div class="results-section glass-panel">
+                    <div class="results-header">
+                        <h3><i class="fa-solid fa-terminal"></i> Output Log</h3>
+                        <div id="loader" class="loader hidden"></div>
+                    </div>
+
+                    <div id="terminal" class="terminal-box">
+                        <div class="log-line system">Automagic Web Server connected.</div>
+                        <div class="log-line system">Ready to accept module instructions.</div>
+                    </div>
+
+                    <div class="results-data hidden" id="resultsDataSection">
+                        <h4 id="resultHeading">Extracted Data</h4>
+                        <div class="stats-row">
+                            <div class="stat-card">
+                                <span class="stat-label">Total Cases</span>
+                                <span class="stat-value" id="statTotalCases">0</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Rows Scraped</span>
+                                <span class="stat-value" id="statRows">0</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Drive Upload</span>
+                                <span class="stat-value success"><i class="fa-solid fa-check"></i> Success</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
