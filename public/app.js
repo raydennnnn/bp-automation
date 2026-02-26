@@ -239,13 +239,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const actionFilter = document.getElementById('ccmsAction').value;
         const sectorFilter = document.getElementById('ccmsSector').value;
-        const searchCol = document.getElementById('ccmsSearchColumn').value;
-        const searchKw = document.getElementById('ccmsSearchKeyword').value;
 
         if (actionFilter) payload.actionFilter = actionFilter;
         if (sectorFilter) payload.sectorFilter = sectorFilter;
-        if (searchCol) payload.searchColumn = searchCol;
-        if (searchKw) payload.searchKeyword = searchKw;
 
         // Perform Action Optional
         const performAction = document.getElementById('ccmsPerformAction').value;
