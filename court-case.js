@@ -390,23 +390,43 @@ async function extractCaseInformation() {
         // Click Case Information tab
         let tab = await page.$(CC.TAB_CASE_INFO);
         if (!tab) {
-            const tabs = await page.$x('//a[contains(., "Case Information")]');
+            const tabs = await page.$x('//a[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "case information")] | //a[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "case info")]');
             if (tabs.length > 0) tab = tabs[0];
         }
         if (tab) {
             const isActive = await page.evaluate(el => el.classList.contains('active'), tab);
             if (!isActive) {
+                console.log('[CCMS] Clicking Case Information tab via evaluate...');
+                // Force JS click to bypass Angular overlays
+                await page.evaluate(el => el.click(), tab);
+                await sleep(2000);
                 await tab.click();
                 await sleep(3000);
+            } else {
+                console.log('[CCMS] Case Information tab is already active.');
             }
+        } else {
+            console.warn('[CCMS] Case Information tab NOT FOUND!');
         }
 
+        // Wait until Case Information tab is actually active (aria-selected becomes true)
         // Wait for panels
         try {
+            await page.waitForFunction(
+                () => {
+                    const tab = document.querySelector('#tab-caf');
+                    return tab && tab.getAttribute('aria-selected') === 'true';
+                },
+                { timeout: 15_000 }
+            );
+            console.log('[CCMS] Case Information tab is now active.');
             await page.waitForSelector('.card h5', { visible: true, timeout: 10_000 });
         } catch (_) {
             console.warn('[CCMS] No panels found after clicking Case Information tab.');
         }
+
+        // Wait extra time for the actual data to populate inside the tab
+        await sleep(5000);
         await sleep(2000);
         await screenshot('ccms_before_case_extract');
 
@@ -414,9 +434,9 @@ async function extractCaseInformation() {
          * Extract a single panel by its h5 header text.
          * Finds the h5, gets closest .card ancestor, extracts label→value pairs.
          */
-        async function extractSinglePanel(headerRegex) {
-            return page.evaluate((regexStr) => {
-                const regex = new RegExp(regexStr, 'i');
+        async function extractSinglePanel(headerText) {
+            return page.evaluate((searchText) => {
+                const needle = searchText.toLowerCase();
                 const data = {};
 
                 // Helper: clean label (remove hidden ID spans)
@@ -433,14 +453,14 @@ async function extractCaseInformation() {
                 }
 
                 // Find the h5 that matches
-                const allH5 = document.querySelectorAll('h5');
+                const allH5 = document.querySelectorAll('h5, h4, h6, .card-header');
                 let targetCard = null;
                 for (const h5 of allH5) {
-                    if (regex.test(h5.innerText.trim())) {
+                    if (h5.innerText.trim().toLowerCase().includes(needle)) {
                         // Walk up to find the closest .card ancestor
                         let el = h5;
                         while (el && el !== document.body) {
-                            if (el.classList && el.classList.contains('card')) {
+                            if (el.classList && (el.classList.contains('card') || el.classList.contains('card-body') || el.classList.contains('panel'))) {
                                 targetCard = el;
                                 break;
                             }
@@ -450,15 +470,20 @@ async function extractCaseInformation() {
                     }
                 }
 
-                if (!targetCard) return data;
+                if (!targetCard) {
+                    data._debug = `No panel matched search text "${searchText}". Elements: ` + Array.from(allH5).map(x => x.innerText.trim()).filter(x => x).join(' | ');
+                    return data;
+                }
 
                 // Find the card-body
-                let body = targetCard.querySelector('.collapse.show .card-body');
-                if (!body) body = targetCard.querySelector('.card-body');
-                if (!body) return data;
+                let body = targetCard.querySelector('.collapse.show .card-body, .card-body, .panel-body') || targetCard;
+                if (!body) {
+                    data._debug = `Found card but no body for "${searchText}"`;
+                    return data;
+                }
 
                 // Extract all form-groups
-                const formGroups = body.querySelectorAll('.form-group');
+                const formGroups = body.querySelectorAll('.form-group, .row > div');
                 const seen = new Set();
 
                 formGroups.forEach(fg => {
@@ -469,7 +494,7 @@ async function extractCaseInformation() {
                     if (!key || seen.has(key)) return;
 
                     // Value from span.form-control (possibly inside <strong>)
-                    const valSpan = fg.querySelector('strong span.form-control, span.form-control');
+                    const valSpan = fg.querySelector('strong span.form-control, span.form-control, .form-control-plaintext, strong');
                     if (valSpan) {
                         data[key] = valSpan.innerText.trim();
                         seen.add(key);
@@ -477,7 +502,7 @@ async function extractCaseInformation() {
                     }
 
                     // Value from .letter-desc
-                    const letterDesc = fg.querySelector('.letter-desc');
+                    const letterDesc = fg.querySelector('.letter-desc, div > span');
                     if (letterDesc) {
                         const val = letterDesc.innerText.trim();
                         if (val) {
@@ -487,19 +512,41 @@ async function extractCaseInformation() {
                     }
                 });
 
+                if (Object.keys(data).length === 0) {
+                    data._debug = `Found body for "${searchText}" but no valid form-groups/values extracted. InnerHTML: ${body.innerHTML.substring(0, 500)}`;
+                }
+
                 return data;
-            }, headerRegex);
+            }, headerText);
         }
 
-        // Extract each panel independently
-        const propertyInfo = await extractSinglePanel('Property\\s*Information');
-        console.log(`[CCMS]   Property fields: ${Object.keys(propertyInfo).length}`);
+        const propertyInfo = await extractSinglePanel('Property Information');
+        console.log(`[CCMS]   Property fields: ${Object.keys(propertyInfo).filter(k => !k.startsWith('_')).length}`);
+        if (propertyInfo._debug) console.log(`[CCMS]   Property debug: ${propertyInfo._debug}`);
 
-        const caseDetails = await extractSinglePanel('Case\\s*Detail');
-        console.log(`[CCMS]   Case detail fields: ${Object.keys(caseDetails).length}`);
+        const caseDetails = await extractSinglePanel('Case Detail');
+        console.log(`[CCMS]   Case detail fields: ${Object.keys(caseDetails).filter(k => !k.startsWith('_')).length}`);
+        if (caseDetails._debug) console.log(`[CCMS]   Case detail debug: ${caseDetails._debug}`);
 
-        const gisCoords = await extractSinglePanel('GIS\\s*Coordinate');
-        console.log(`[CCMS]   GIS fields: ${Object.keys(gisCoords).length}`);
+        const gisCoords = await extractSinglePanel('GIS Coordinate');
+        console.log(`[CCMS]   GIS fields: ${Object.keys(gisCoords).filter(k => !k.startsWith('_')).length}`);
+        if (gisCoords._debug) console.log(`[CCMS]   GIS debug: ${gisCoords._debug}`);
+
+        // If EVERYTHING failed, dump the active tab HTML for analysis
+        if (Object.keys(propertyInfo).length <= 1 && Object.keys(caseDetails).length <= 1 && Object.keys(gisCoords).length <= 1) {
+            const dumpHTML = await page.evaluate(() => {
+                const activeTab = document.querySelector('.tab-pane.active') || document.body;
+                return activeTab.innerHTML;
+            });
+            const dumpPath = path.join(CFG.DOWNLOAD_DIR || __dirname, 'ccms_debug_case_info.html');
+            fs.writeFileSync(dumpPath, dumpHTML);
+            console.log(`[CCMS] ⚠ Wrote full Case Info HTML dump to ${dumpPath}`);
+        }
+
+        // Remove debug keys before returning
+        delete propertyInfo._debug;
+        delete caseDetails._debug;
+        delete gisCoords._debug;
 
         const caseInfo = {
             property_information: propertyInfo,
@@ -541,7 +588,7 @@ async function extractCCMSWorkflow() {
         // Click Workflow tab
         let tab = await page.$(CC.TAB_WORKFLOW);
         if (!tab) {
-            const tabs = await page.$x('//a[contains(., "Workflow")]');
+            const tabs = await page.$x('//a[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "workflow")]');
             if (tabs.length > 0) tab = tabs[0];
         }
         if (!tab) {
@@ -551,7 +598,8 @@ async function extractCCMSWorkflow() {
 
         const isActive = await page.evaluate(el => el.classList.contains('active'), tab);
         if (!isActive) {
-            await tab.click();
+            console.log('[CCMS] Clicking Workflow tab via evaluate...');
+            await page.evaluate(el => el.click(), tab);
             await sleep(2000);
         }
 
@@ -670,15 +718,18 @@ async function getActionOptions() {
         // Click Action tab
         let tab = await page.$(CC.TAB_ACTION);
         if (!tab) {
-            const tabs = await page.$x('//a[contains(., "Action")]');
+            const tabs = await page.$x('//a[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "action")]');
             if (tabs.length > 0) tab = tabs[0];
         }
         if (tab) {
             const isActive = await page.evaluate(el => el.classList.contains('active'), tab);
             if (!isActive) {
-                await tab.click();
+                console.log('[CCMS] Clicking Action tab via evaluate...');
+                await page.evaluate(el => el.click(), tab);
                 await sleep(2000);
             }
+        } else {
+            console.warn('[CCMS] Action tab NOT FOUND!');
         }
 
         const options = await page.$$eval(CC.ACTION_SELECT + ' option', opts =>
@@ -709,13 +760,14 @@ async function performAction(params = {}) {
         // Make sure we're on the Action tab
         let tab = await page.$(CC.TAB_ACTION);
         if (!tab) {
-            const tabs = await page.$x('//a[contains(., "Action")]');
+            const tabs = await page.$x('//a[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "action")]');
             if (tabs.length > 0) tab = tabs[0];
         }
         if (tab) {
             const isActive = await page.evaluate(el => el.classList.contains('active'), tab);
             if (!isActive) {
-                await tab.click();
+                console.log('[CCMS] Clicking Action tab via evaluate...');
+                await page.evaluate(el => el.click(), tab);
                 await sleep(2000);
             }
         }
