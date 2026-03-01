@@ -3,7 +3,10 @@
  * Provides launch / reuse / getPage / close.
  */
 
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+puppeteer.use(StealthPlugin());
+
 const fs = require('fs');
 const CFG = require('./config');
 
@@ -24,7 +27,7 @@ async function launch() {
 
     console.log('[Browser] Launching Chromium...');
     browser = await puppeteer.launch({
-        headless: false,
+        headless: "new",
         slowMo: 50,
         defaultViewport: null,
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--start-maximized'],
